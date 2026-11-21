@@ -36,12 +36,12 @@ def render(df_all: pd.DataFrame):
         f"{sab_rec_ok}/{len(df_sab)} rec. · {sab_paq_ok:,}/{int(df_sab['NUMERO DE PAQUETES'].sum()):,} paq.",
     )
     m3.metric(
-        "🚚 Total Entregado (Vie + Sáb)",
+        "🚚 Total Entregado",
         f"{_pct(tot_rec_ok, len(df_all)):.1f}%",
         f"{tot_rec_ok}/{len(df_all)} rec. · {tot_paq_ok:,}/9,466 paq.",
     )
     m4.metric(
-        "📦 Domingo 29/11 (Recibido Bodega)",
+        "📦 Recibido a Bodega",
         f"{_pct(ret_rec_ok, len(df_all)):.1f}%",
         f"{ret_rec_ok}/{len(df_all)} rec. · {ret_paq_ok:,}/9,466 paq.",
     )
@@ -113,7 +113,7 @@ def render(df_all: pd.DataFrame):
         "RECIBIDO_BODEGA", "FECHA Y HORA DE FINALIZACION", "USUARIO_RECEPCION", "OBS_RECEPCION",
     ]
     st.download_button(
-        "⬇️ Descargar Reporte General de Estado y Trazabilidad (Excel)",
+        "⬇️ Descargar Reporte General",
         data=to_excel_bytes(df_all[export_cols], "Estado_Logistico"),
         file_name="Reporte_Estado_Despacho_Guayas2026.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
