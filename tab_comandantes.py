@@ -78,7 +78,7 @@ def render(df_all: pd.DataFrame):
         (k1, f"{len(df_f):,}", "Recintos"),
         (k2, f"{int(df_f['NUMERO DE PAQUETES'].sum()):,}", "Paquetes / Kits"),
         (k3, f"{int(df_f['BIOMBOS'].sum()):,}", "Biombos"),
-        (k4, f"{int(df_f['BIOMBO MAP (Recinto x2)'].sum()):,}", "Biombo MAP"),
+        (k4, f"{int(df_f['BIOMBO MAP'].sum()):,}", "Biombo MAP"),
         (k5, f"{int(df_f['URNAS BLANCAS'].sum()):,}", "Urnas Blancas"),
         (k6, f"{int(df_f['URNAS CAFÉS'].sum()):,}", "Urnas Cafés"),
         (k7, f"{int(df_f['KITS CDA'].sum()):,}", "Kits CDA"),
