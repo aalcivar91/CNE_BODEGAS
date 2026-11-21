@@ -73,8 +73,8 @@ def load_base_data(path: str = EXCEL_PATH) -> pd.DataFrame:
     df["NUMERO DE PAQUETES"] = pd.to_numeric(df["NUMERO DE PAQUETES"], errors="coerce").fillna(0).astype(int)
     df["KITS CDA"] = pd.to_numeric(df["KITS CDA"], errors="coerce").fillna(0).astype(int)
 
-    df["BIOMBOS (Kits x2)"] = df["NUMERO DE PAQUETES"] * 2
-    df["BIOMBO MAP (Recinto x2)"] = 2
+    df["BIOMBOS"] = df["NUMERO DE PAQUETES"] * 2
+    df["BIOMBO MAP"] = 2
     df["URNAS BLANCAS"] = df["NUMERO DE PAQUETES"]
     df["URNAS CAFÉS"] = df["NUMERO DE PAQUETES"]
 
