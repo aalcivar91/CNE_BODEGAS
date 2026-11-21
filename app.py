@@ -26,7 +26,7 @@ col_b.markdown(
     f"""
     <div class="main-banner">
         <h2>📦 Control Logístico de Material Electoral — Bodegas CNE 2026</h2>
-        <p>584 Recintos · 9,466 Paquetes/Kits · 25 Cantones · 499 Kits CDA &nbsp;|&nbsp; Almacenamiento: {storage_badge}</p>
+        <p>584 Recintos · 9,466 Paquetes/Kits · 25 Cantones · 499 Kits CDA &nbsp;|&nbsp;</p>
     </div>
     """,
     unsafe_allow_html=True,
