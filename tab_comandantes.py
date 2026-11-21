@@ -104,8 +104,8 @@ def render(df_all: pd.DataFrame):
                 Cantones=("CANTON", lambda s: ", ".join(dict.fromkeys(s))),
                 Recintos=("RECINTO", "count"),
                 Paquetes=("NUMERO DE PAQUETES", "sum"),
-                Biombos=("BIOMBOS (Kits x2)", "sum"),
-                Biombo_MAP=("BIOMBO MAP (Recinto x2)", "sum"),
+                Biombos=("BIOMBOS", "sum"),
+                Biombo_MAP=("BIOMBO MAP", "sum"),
                 Urnas_Blancas=("URNAS BLANCAS", "sum"),
                 Urnas_Cafes=("URNAS CAFÉS", "sum"),
                 Kits_CDA=("KITS CDA", "sum"),
@@ -134,21 +134,21 @@ def render(df_all: pd.DataFrame):
         st.download_button(
             "⬇️ Descargar Resumen por Camión (Excel)",
             data=to_excel_bytes(df_cam, "Resumen_Camiones"),
-            file_name="Horarios_Por_Camion_Guayas2026.xlsx",
+            file_name="Horarios_Por_Camion_BodegasCNE2026.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
     else:
         cols_show = [
             "ORDEN", "ESTADO", "FECHA_STR", "HORA_STR", "BLOQUE", "FUERZA", "GT", "CAMION",
             "CANTON", "PARROQUIA", "ZONA", "RECINTO", "NUMERO DE PAQUETES",
-            "CDA", "KITS CDA", "CODIGO KIT CDA", "BIOMBOS (Kits x2)",
-            "BIOMBO MAP (Recinto x2)", "URNAS BLANCAS", "URNAS CAFÉS", "CODIGO PAQUETES",
+            "CDA", "KITS CDA", "CODIGO KIT CDA", "BIOMBOS",
+            "BIOMBO MAP", "URNAS BLANCAS", "URNAS CAFÉS", "CODIGO PAQUETES",
         ]
         df_show = df_f[cols_show].rename(columns={"FECHA_STR": "FECHA RETIRO", "HORA_STR": "HORA RETIRO"})
         st.dataframe(df_show, use_container_width=True, hide_index=True, height=480)
         st.download_button(
             "⬇️ Descargar Detalle Filtrado",
             data=to_excel_bytes(df_show, "Detalle_Recintos"),
-            file_name="Horarios_Recintos_Guayas2026.xlsx",
+            file_name="Horarios_Recintos_BodegasCNE2026.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
