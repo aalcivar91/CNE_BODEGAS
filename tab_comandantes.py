@@ -4,7 +4,7 @@ from utils import sort_camiones, to_excel_bytes
 
 
 def render(df_all: pd.DataFrame):
-    st.subheader("Consulta de Fecha, Horario de Recolección y Carga")
+    st.subheader("Consulta de Fecha y Horario de Recolección")
 
     c1, c2, c3, c4 = st.columns(4)
     fuerzas_opts = ["TODAS"] + sorted(df_all["FUERZA"].unique().tolist())
@@ -65,9 +65,9 @@ def render(df_all: pd.DataFrame):
         st.markdown(
             f"""
             <div class="franja-box">
-                <strong>🗓️ Fecha(s) de Recolección:</strong> {' / '.join(fechas_u)} &nbsp;&nbsp;|&nbsp;&nbsp;
+                <strong>🗓️ Fecha de Recolección:</strong> {' / '.join(fechas_u)} &nbsp;&nbsp;|&nbsp;&nbsp;
                 <strong>⏰ Franja Horaria de Retiro:</strong> {franja_txt} &nbsp;&nbsp;|&nbsp;&nbsp;
-                <strong>📌 Bloque(s):</strong> {', '.join(bloques_u)}
+                <strong>📌 Bloque:</strong> {', '.join(bloques_u)}
             </div>
             """,
             unsafe_allow_html=True,
@@ -77,7 +77,7 @@ def render(df_all: pd.DataFrame):
     kpis = [
         (k1, f"{len(df_f):,}", "Recintos"),
         (k2, f"{int(df_f['NUMERO DE PAQUETES'].sum()):,}", "Paquetes / Kits"),
-        (k3, f"{int(df_f['BIOMBOS (Kits x2)'].sum()):,}", "Biombos"),
+        (k3, f"{int(df_f['BIOMBOS'].sum()):,}", "Biombos"),
         (k4, f"{int(df_f['BIOMBO MAP (Recinto x2)'].sum()):,}", "Biombo MAP"),
         (k5, f"{int(df_f['URNAS BLANCAS'].sum()):,}", "Urnas Blancas"),
         (k6, f"{int(df_f['URNAS CAFÉS'].sum()):,}", "Urnas Cafés"),
@@ -147,7 +147,7 @@ def render(df_all: pd.DataFrame):
         df_show = df_f[cols_show].rename(columns={"FECHA_STR": "FECHA RETIRO", "HORA_STR": "HORA RETIRO"})
         st.dataframe(df_show, use_container_width=True, hide_index=True, height=480)
         st.download_button(
-            "⬇️ Descargar Detalle Filtrado (Excel)",
+            "⬇️ Descargar Detalle Filtrado",
             data=to_excel_bytes(df_show, "Detalle_Recintos"),
             file_name="Horarios_Recintos_Guayas2026.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
