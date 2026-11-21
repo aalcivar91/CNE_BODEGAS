@@ -35,8 +35,8 @@ def render(df_all: pd.DataFrame):
     modo_ctrl = st.radio(
         "Etapa operativa:",
         [
-            "🚚 Despacho desde Bodega (Viernes / Sábado)",
-            "📦 Recibido en Bodega — Post-Elecciones (Domingo)",
+            "🚚 Despacho desde Bodega",
+            "📦 Recibido en Bodega — Post-Elecciones",
         ],
         horizontal=True,
         key="ctrl_modo",
