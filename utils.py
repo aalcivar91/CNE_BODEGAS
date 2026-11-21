@@ -19,7 +19,7 @@ def get_secret(key: str, default: str = "") -> str:
         return os.environ.get(key, default)
 
 
-ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD", "GUAYAS2026")
+ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD", "DINDES2026")
 SUPABASE_URL = get_secret("SUPABASE_URL", "")
 SUPABASE_KEY = get_secret("SUPABASE_KEY", "")
 USE_SUPABASE = bool(SUPABASE_URL and SUPABASE_KEY)
