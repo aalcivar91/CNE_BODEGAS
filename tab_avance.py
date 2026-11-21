@@ -108,13 +108,13 @@ def render(df_all: pd.DataFrame):
         "ORDEN", "ESTADO", "DIA_ENTREGA", "FECHA_STR", "HORA_STR", "BLOQUE",
         "FUERZA", "GT", "CAMION", "CANTON", "PARROQUIA", "ZONA", "RECINTO",
         "NUMERO DE PAQUETES", "CDA", "KITS CDA", "CODIGO KIT CDA",
-        "BIOMBOS (Kits x2)", "BIOMBO MAP (Recinto x2)", "URNAS BLANCAS", "URNAS CAFÉS",
+        "BIOMBOS", "BIOMBO MAP", "URNAS BLANCAS", "URNAS CAFÉS",
         "ENTREGADO", "FECHA_HORA_ENTREGA", "USUARIO_ENTREGA", "OBS_ENTREGA",
         "RECIBIDO_BODEGA", "FECHA Y HORA DE FINALIZACION", "USUARIO_RECEPCION", "OBS_RECEPCION",
     ]
     st.download_button(
         "⬇️ Descargar Reporte General",
         data=to_excel_bytes(df_all[export_cols], "Estado_Logistico"),
-        file_name="Reporte_Estado_Despacho_Guayas2026.xlsx",
+        file_name="Reporte_Estado_Despacho_Bodegas CNE.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
