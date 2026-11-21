@@ -135,7 +135,7 @@ def render(df_all: pd.DataFrame):
         edit_cols = [
             "ORDEN", "ENTREGADO", "FECHA_HORA_ENTREGA", "OBS_ENTREGA",
             "DIA_ENTREGA", "HORA_STR", "FUERZA", "GT", "CAMION",
-            "CANTON", "ZONA", "RECINTO", "NUMERO DE PAQUETES", "PERCHA",
+            "CANTON", "ZONA", "RECINTO", "NUMERO DE PAQUETES", "PERCHA","NIVEL (POR PERCHA)",
         ]
         edited_ent = st.data_editor(
             df_e[edit_cols],
@@ -288,7 +288,7 @@ def render(df_all: pd.DataFrame):
         rec_cols = [
             "ORDEN", "RECIBIDO_BODEGA", "FECHA Y HORA DE FINALIZACION", "OBS_RECEPCION",
             "FECHA_HORA_ENTREGA", "FUERZA", "GT", "CAMION",
-            "CANTON", "ZONA", "RECINTO", "NUMERO DE PAQUETES",
+            "CANTON", "ZONA", "RECINTO", "NUMERO DE PAQUETES","NIVEL (POR PERCHA)",
         ]
         edited_rec = st.data_editor(
             df_r[rec_cols],
