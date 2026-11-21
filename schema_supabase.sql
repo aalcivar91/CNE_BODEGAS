@@ -1,4 +1,4 @@
--- Ejecutar una sola vez en el SQL Editor de Supabase
+
 create table if not exists public.estado_logistico (
     orden integer primary key,
     entregado integer default 0,
@@ -11,7 +11,7 @@ create table if not exists public.estado_logistico (
     obs_recepcion text default ''
 );
 
--- Habilitar acceso desde la app (ajustar políticas RLS según seguridad requerida)
+
 alter table public.estado_logistico enable row level security;
 
 create policy "Lectura publica estado_logistico"
