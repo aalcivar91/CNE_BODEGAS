@@ -17,10 +17,8 @@ def _match_cod_paquete(cod_str: str, q_raw: str) -> bool:
     start = nums[0]
     end = nums[-1] if len(nums) >= 2 else nums[0]
     q_num = int(q_raw)
-    # 1) Coincidencia exacta dentro del rango (ej. 900378 o 0900378)
     if start <= q_num <= end:
         return True
-    # 2) Coincidencia por terminación sin importar prefijo (ej. 377 -> 900377, 901377, 902377...)
     if len(q_raw) <= 5 and (end - start) <= 500:
         return any(str(n).endswith(q_raw) for n in range(start, end + 1))
     return False
@@ -44,18 +42,37 @@ def _filtrar_busqueda(df_in: pd.DataFrame, busq: str) -> pd.DataFrame:
     return df_in[mask]
 
 
+def _filtrar_por_ordenes(df_in: pd.DataFrame, texto_ordenes: str) -> pd.DataFrame:
+    if not texto_ordenes.strip():
+        return df_in
+    ids = set()
+    for token in re.split(r"[\s,;]+", texto_ordenes.strip()):
+        if not token:
+            continue
+        if "-" in token:
+            partes = token.split("-", 1)
+            if partes[0].isdigit() and partes[1].isdigit():
+                a, b = int(partes[0]), int(partes[1])
+                ids.update(range(min(a, b), max(a, b) + 1))
+        elif token.isdigit():
+            ids.add(int(token))
+    return df_in[df_in["ORDEN"].isin(ids)] if ids else df_in
+
+
 def _reset_ent_filtros():
     st.session_state["e_fz"] = "TODAS"
     st.session_state["e_gt"] = "TODOS"
     st.session_state["e_cam"] = "TODOS"
     st.session_state["e_est"] = "TODOS"
     st.session_state["e_busq_recinto"] = ""
+    st.session_state["e_ordenes_sel"] = ""
 
 
 def _on_e_fz_change():
     st.session_state["e_gt"] = "TODOS"
     st.session_state["e_cam"] = "TODOS"
     st.session_state["e_busq_recinto"] = ""
+    st.session_state["e_ordenes_sel"] = ""
 
 
 def _reset_rec_filtros():
@@ -64,12 +81,14 @@ def _reset_rec_filtros():
     st.session_state["r_cam"] = "TODOS"
     st.session_state["r_est"] = "TODOS"
     st.session_state["r_busq_recinto"] = ""
+    st.session_state["r_ordenes_sel"] = ""
 
 
 def _on_r_fz_change():
     st.session_state["r_gt"] = "TODOS"
     st.session_state["r_cam"] = "TODOS"
     st.session_state["r_busq_recinto"] = ""
+    st.session_state["r_ordenes_sel"] = ""
 
 
 def render(df_all: pd.DataFrame):
@@ -93,7 +112,7 @@ def render(df_all: pd.DataFrame):
     top_a, top_b = st.columns([4, 1])
     operador = top_a.text_input(
         "Nombre / Grado del operador que registra",
-        value=st.session_state.get("operador", "Bodega Base Naval Sur"),
+        value=st.session_state.get("operador"),
         key="op_name",
     )
     st.session_state["operador"] = operador
@@ -104,8 +123,8 @@ def render(df_all: pd.DataFrame):
     modo_ctrl = st.radio(
         "Etapa operativa:",
         [
-            "🚚 Despacho desde Bodega (Viernes / Sábado)",
-            "📦 Recibido en Bodega — Post-Elecciones (Domingo)",
+            "🚚 Despacho desde Bodega a Jefes De Recinto",
+            "📦 Recibido en Bodega — Post-Elecciones",
         ],
         horizontal=True,
         key="ctrl_modo",
@@ -144,68 +163,24 @@ def render(df_all: pd.DataFrame):
             st.write("")
             st.button("🧹 Limpiar", use_container_width=True, key="btn_limpiar_e", on_click=_reset_ent_filtros)
 
-        e_busq = st.text_input(
+        b1, b2 = st.columns([2, 1.2])
+        e_busq = b1.text_input(
             "🔎 Buscar por nombre de Recinto, Zona, Parroquia o Código de Paquete",
-            placeholder="Ej: 377, 900378, MILAGRO, 9 DE OCTUBRE, KIT-0085...",
+            placeholder="Ej: 377, 900378, MILAGRO, 9 DE OCTUBRE...",
             key="e_busq_recinto",
         )
-        df_e = _filtrar_busqueda(df_e, e_busq)
-
-        st.markdown("##### ⚡ Acción rápida sobre el filtro actual")
-        qa1, qa2, qa3 = st.columns([2, 1.3, 1.3])
-        obs_lote = qa1.text_input(
-            "Observación de despacho (opcional)",
-            placeholder="Ej: Acta firmada sin novedad",
-            key="obs_ent_lote",
+        e_ordenes = b2.text_input(
+            "🎯 Filtrar por N° de ORDEN (varios)",
+            placeholder="Ej: 2 4 66 77",
+            key="e_ordenes_sel",
         )
+        df_e = _filtrar_busqueda(df_e, e_busq)
+        df_e = _filtrar_por_ordenes(df_e, e_ordenes)
 
-        if qa2.button(
-            f"✅ Marcar {len(df_e)} recinto(s) como ENTREGADO",
-            type="primary",
-            use_container_width=True,
-            disabled=(len(df_e) == 0),
-        ):
-            ts = now_ec_str()
-            recs = []
-            for _, r in df_e.iterrows():
-                recs.append(
-                    {
-                        "orden": int(r["ORDEN"]),
-                        "entregado": 1,
-                        "fecha_hora_entrega": r["FECHA_HORA_ENTREGA"] if r["ENTREGADO"] and r["FECHA_HORA_ENTREGA"] else ts,
-                        "usuario_entrega": operador,
-                        "obs_entrega": obs_lote if obs_lote else r["OBS_ENTREGA"],
-                        "recibido_bodega": int(bool(r["RECIBIDO_BODEGA"])),
-                        "fecha_hora_finalizacion": r["FECHA Y HORA DE FINALIZACION"],
-                        "usuario_recepcion": r["USUARIO_RECEPCION"],
-                        "obs_recepcion": r["OBS_RECEPCION"],
-                    }
-                )
-            upsert_status_records(recs)
-            st.success(f"Se marcaron {len(recs)} recintos como ENTREGADO ({ts}).")
-            st.rerun()
+        # Contenedor visual arriba de la tabla, pero rellenado DESPUÉS de leer las casillas marcadas
+        barra_accion_e = st.container()
 
-        if qa3.button("↩️ Revertir a PENDIENTE", use_container_width=True, disabled=(len(df_e) == 0)):
-            recs = []
-            for _, r in df_e.iterrows():
-                recs.append(
-                    {
-                        "orden": int(r["ORDEN"]),
-                        "entregado": 0,
-                        "fecha_hora_entrega": "",
-                        "usuario_entrega": "",
-                        "obs_entrega": "",
-                        "recibido_bodega": 0,
-                        "fecha_hora_finalizacion": "",
-                        "usuario_recepcion": "",
-                        "obs_recepcion": "",
-                    }
-                )
-            upsert_status_records(recs)
-            st.warning(f"Se revirtieron {len(recs)} recintos a PENDIENTE.")
-            st.rerun()
-
-        st.markdown("##### 📋 Edición individual por recinto (Despacho)")
+        st.markdown("##### 📋 Selección individual por recinto (marque las casillas y pulse el botón superior)")
         edit_cols = [
             "ORDEN", "ENTREGADO", "FECHA_HORA_ENTREGA", "OBS_ENTREGA",
             "DIA_ENTREGA", "HORA_STR", "FUERZA", "GT", "CAMION",
@@ -226,35 +201,136 @@ def render(df_all: pd.DataFrame):
             },
             key="editor_entregas",
         )
-        if st.button("💾 Guardar cambios individuales de Entrega", type="primary", key="save_ent_ind"):
-            ts = now_ec_str()
-            orig_map = df_e.set_index("ORDEN").to_dict("index")
-            to_save = []
-            for _, row_ed in edited_ent.iterrows():
-                o_id = int(row_ed["ORDEN"])
-                o_prev = orig_map[o_id]
-                new_ent = bool(row_ed["ENTREGADO"])
-                new_obs = str(row_ed["OBS_ENTREGA"] or "")
-                if new_ent != bool(o_prev["ENTREGADO"]) or new_obs != str(o_prev["OBS_ENTREGA"]):
-                    to_save.append(
-                        {
-                            "orden": o_id,
-                            "entregado": int(new_ent),
-                            "fecha_hora_entrega": (o_prev["FECHA_HORA_ENTREGA"] or ts) if new_ent else "",
-                            "usuario_entrega": operador if new_ent else "",
-                            "obs_entrega": new_obs if new_ent else "",
-                            "recibido_bodega": int(bool(o_prev["RECIBIDO_BODEGA"])) if new_ent else 0,
-                            "fecha_hora_finalizacion": o_prev["FECHA Y HORA DE FINALIZACION"] if new_ent else "",
-                            "usuario_recepcion": o_prev["USUARIO_RECEPCION"] if new_ent else "",
-                            "obs_recepcion": o_prev["OBS_RECEPCION"] if new_ent else "",
-                        }
-                    )
-            if to_save:
-                upsert_status_records(to_save)
-                st.success(f"Guardados {len(to_save)} cambios de entrega.")
-                st.rerun()
+
+        # Detectar qué recintos marcó o desmarcó el operador en la tabla
+        orig_map = df_e.set_index("ORDEN").to_dict("index")
+        nuevos_ent = []
+        nuevos_pend = []
+        solo_obs = []
+        for _, row_ed in edited_ent.iterrows():
+            o_id = int(row_ed["ORDEN"])
+            o_prev = orig_map[o_id]
+            new_ent = bool(row_ed["ENTREGADO"])
+            old_ent = bool(o_prev["ENTREGADO"])
+            new_obs = str(row_ed["OBS_ENTREGA"] or "")
+            old_obs = str(o_prev["OBS_ENTREGA"] or "")
+            if new_ent and not old_ent:
+                nuevos_ent.append((o_id, new_obs))
+            elif not new_ent and old_ent:
+                nuevos_pend.append(o_id)
+            elif new_obs != old_obs:
+                solo_obs.append((o_id, new_ent, new_obs))
+
+        hay_filtro_e = len(df_e) < len(df_all)
+
+        with barra_accion_e:
+            st.markdown("##### ⚡ Acción sobre selección actual")
+            qa1, qa2, qa3 = st.columns([2, 1.5, 1.2])
+            obs_lote = qa1.text_input(
+                "Observación de despacho (opcional)",
+                placeholder="Ej: Acta firmada sin novedad",
+                key="obs_ent_lote",
+            )
+
+            # Botón rojo: prioriza SIEMPRE las casillas que marcaste (ej: 3 y 8)
+            if len(nuevos_ent) > 0:
+                ords_txt = ", ".join(str(x[0]) for x in nuevos_ent[:8]) + ("..." if len(nuevos_ent) > 8 else "")
+                btn_lbl = f"✅ Marcar {len(nuevos_ent)} seleccionado(s) como ENTREGADO (Orden: {ords_txt})"
+                btn_disabled = False
+            elif len(solo_obs) > 0:
+                btn_lbl = f"💾 Guardar {len(solo_obs)} observación(es) modificada(s)"
+                btn_disabled = False
+            elif hay_filtro_e and len(df_e) > 0:
+                btn_lbl = f"✅ Marcar {len(df_e)} filtrado(s) como ENTREGADO"
+                btn_disabled = False
             else:
-                st.info("No se detectaron cambios pendientes por guardar.")
+                btn_lbl = "Marque recintos en la tabla o filtre un camión"
+                btn_disabled = True
+
+            if qa2.button(btn_lbl, type="primary", use_container_width=True, disabled=btn_disabled, key="btn_ent_dyn"):
+                ts = now_ec_str()
+                recs = []
+                if len(nuevos_ent) > 0 or len(solo_obs) > 0:
+                    for o_id, row_obs in nuevos_ent:
+                        o_prev = orig_map[o_id]
+                        recs.append(
+                            {
+                                "orden": o_id,
+                                "entregado": 1,
+                                "fecha_hora_entrega": ts,
+                                "usuario_entrega": operador,
+                                "obs_entrega": obs_lote if obs_lote else row_obs,
+                                "recibido_bodega": int(bool(o_prev["RECIBIDO_BODEGA"])),
+                                "fecha_hora_finalizacion": o_prev["FECHA Y HORA DE FINALIZACION"],
+                                "usuario_recepcion": o_prev["USUARIO_RECEPCION"],
+                                "obs_recepcion": o_prev["OBS_RECEPCION"],
+                            }
+                        )
+                    for o_id, cur_ent, row_obs in solo_obs:
+                        o_prev = orig_map[o_id]
+                        recs.append(
+                            {
+                                "orden": o_id,
+                                "entregado": int(cur_ent),
+                                "fecha_hora_entrega": o_prev["FECHA_HORA_ENTREGA"],
+                                "usuario_entrega": operador if cur_ent else "",
+                                "obs_entrega": row_obs,
+                                "recibido_bodega": int(bool(o_prev["RECIBIDO_BODEGA"])),
+                                "fecha_hora_finalizacion": o_prev["FECHA Y HORA DE FINALIZACION"],
+                                "usuario_recepcion": o_prev["USUARIO_RECEPCION"],
+                                "obs_recepcion": o_prev["OBS_RECEPCION"],
+                            }
+                        )
+                else:
+                    # Sin casillas individuales marcadas, pero con filtro activo -> aplicar al filtro
+                    for _, r in df_e.iterrows():
+                        recs.append(
+                            {
+                                "orden": int(r["ORDEN"]),
+                                "entregado": 1,
+                                "fecha_hora_entrega": r["FECHA_HORA_ENTREGA"] if r["ENTREGADO"] and r["FECHA_HORA_ENTREGA"] else ts,
+                                "usuario_entrega": operador,
+                                "obs_entrega": obs_lote if obs_lote else r["OBS_ENTREGA"],
+                                "recibido_bodega": int(bool(r["RECIBIDO_BODEGA"])),
+                                "fecha_hora_finalizacion": r["FECHA Y HORA DE FINALIZACION"],
+                                "usuario_recepcion": r["USUARIO_RECEPCION"],
+                                "obs_recepcion": r["OBS_RECEPCION"],
+                            }
+                        )
+                upsert_status_records(recs)
+                st.success(f"Registrados {len(recs)} recinto(s) como ENTREGADO ({ts}).")
+                st.rerun()
+
+            # Botón revertir: prioriza las casillas desmarcadas o el filtro activo
+            if len(nuevos_pend) > 0:
+                rev_lbl = f"↩️ Revertir {len(nuevos_pend)} desmarcado(s) a PENDIENTE"
+                rev_disabled = False
+            elif hay_filtro_e and len(df_e) > 0:
+                rev_lbl = f"↩️ Revertir {len(df_e)} filtrado(s) a PENDIENTE"
+                rev_disabled = False
+            else:
+                rev_lbl = "↩️ Revertir a PENDIENTE"
+                rev_disabled = True
+
+            if qa3.button(rev_lbl, use_container_width=True, disabled=rev_disabled, key="btn_rev_dyn"):
+                ids_rev = nuevos_pend if len(nuevos_pend) > 0 else [int(x) for x in df_e["ORDEN"].tolist()]
+                recs = [
+                    {
+                        "orden": o_id,
+                        "entregado": 0,
+                        "fecha_hora_entrega": "",
+                        "usuario_entrega": "",
+                        "obs_entrega": "",
+                        "recibido_bodega": 0,
+                        "fecha_hora_finalizacion": "",
+                        "usuario_recepcion": "",
+                        "obs_recepcion": "",
+                    }
+                    for o_id in ids_rev
+                ]
+                upsert_status_records(recs)
+                st.warning(f"Se revirtieron {len(recs)} recinto(s) a PENDIENTE.")
+                st.rerun()
 
     # ==========================================================================
     # MODO B: RECIBIDO EN BODEGA (SOLO HABILITADO PARA RECINTOS YA ENTREGADOS)
@@ -301,66 +377,23 @@ def render(df_all: pd.DataFrame):
             st.write("")
             st.button("🧹 Limpiar", use_container_width=True, key="btn_limpiar_r", on_click=_reset_rec_filtros)
 
-        r_busq = st.text_input(
+        rb1, rb2 = st.columns([2, 1.2])
+        r_busq = rb1.text_input(
             "🔎 Buscar por nombre de Recinto, Zona, Parroquia o Código de Paquete",
-            placeholder="Ej: 377, 900378, MILAGRO, 9 DE OCTUBRE, KIT-0085...",
+            placeholder="Ej: 377, 900378, MILAGRO, 9 DE OCTUBRE...",
             key="r_busq_recinto",
         )
-        df_r = _filtrar_busqueda(df_r, r_busq)
-
-        ra1, ra2, ra3 = st.columns([2, 1.4, 1.2])
-        obs_rec_lote = ra1.text_input(
-            "Novedad / Observación de retorno (opcional)",
-            placeholder="Ej: Retorno completo con actas y urnas",
-            key="obs_rec_lote",
+        r_ordenes = rb2.text_input(
+            "🎯 Filtrar por N° de ORDEN (varios)",
+            placeholder="Ej: 2 4 66 77",
+            key="r_ordenes_sel",
         )
+        df_r = _filtrar_busqueda(df_r, r_busq)
+        df_r = _filtrar_por_ordenes(df_r, r_ordenes)
 
-        if ra2.button(
-            f"📦 Marcar {len(df_r)} recinto(s) RECIBIDO EN BODEGA",
-            type="primary",
-            use_container_width=True,
-            disabled=(len(df_r) == 0),
-        ):
-            ts = now_ec_str()
-            recs = []
-            for _, r in df_r.iterrows():
-                recs.append(
-                    {
-                        "orden": int(r["ORDEN"]),
-                        "entregado": 1,
-                        "fecha_hora_entrega": r["FECHA_HORA_ENTREGA"],
-                        "usuario_entrega": r["USUARIO_ENTREGA"],
-                        "obs_entrega": r["OBS_ENTREGA"],
-                        "recibido_bodega": 1,
-                        "fecha_hora_finalizacion": r["FECHA Y HORA DE FINALIZACION"] if r["RECIBIDO_BODEGA"] and r["FECHA Y HORA DE FINALIZACION"] else ts,
-                        "usuario_recepcion": operador,
-                        "obs_recepcion": obs_rec_lote if obs_rec_lote else r["OBS_RECEPCION"],
-                    }
-                )
-            upsert_status_records(recs)
-            st.success(f"Registrados {len(recs)} recintos como RECIBIDO EN BODEGA ({ts}).")
-            st.rerun()
+        barra_accion_r = st.container()
 
-        if ra3.button("↩️ Desmarcar Retorno", use_container_width=True, disabled=(len(df_r) == 0)):
-            recs = []
-            for _, r in df_r.iterrows():
-                recs.append(
-                    {
-                        "orden": int(r["ORDEN"]),
-                        "entregado": 1,
-                        "fecha_hora_entrega": r["FECHA_HORA_ENTREGA"],
-                        "usuario_entrega": r["USUARIO_ENTREGA"],
-                        "obs_entrega": r["OBS_ENTREGA"],
-                        "recibido_bodega": 0,
-                        "fecha_hora_finalizacion": "",
-                        "usuario_recepcion": "",
-                        "obs_recepcion": "",
-                    }
-                )
-            upsert_status_records(recs)
-            st.warning(f"Se desmarcó el retorno en {len(recs)} recintos.")
-            st.rerun()
-
+        st.markdown("##### 📋 Selección individual por recinto (Retorno a Bodega)")
         rec_cols = [
             "ORDEN", "RECIBIDO_BODEGA", "FECHA Y HORA DE FINALIZACION", "OBS_RECEPCION",
             "FECHA_HORA_ENTREGA", "FUERZA", "GT", "CAMION",
@@ -379,33 +412,131 @@ def render(df_all: pd.DataFrame):
             },
             key="editor_recepcion",
         )
-        if st.button("💾 Guardar cambios individuales de Retorno", type="primary", key="save_rec_ind"):
-            ts = now_ec_str()
-            orig_map = df_r.set_index("ORDEN").to_dict("index")
-            to_save = []
-            for _, row_ed in edited_rec.iterrows():
-                o_id = int(row_ed["ORDEN"])
-                o_prev = orig_map[o_id]
-                new_rec = bool(row_ed["RECIBIDO_BODEGA"])
-                new_obs = str(row_ed["OBS_RECEPCION"] or "")
-                if new_rec != bool(o_prev["RECIBIDO_BODEGA"]) or new_obs != str(o_prev["OBS_RECEPCION"]):
-                    to_save.append(
+
+        orig_map_r = df_r.set_index("ORDEN").to_dict("index")
+        nuevos_rec = []
+        desm_rec = []
+        solo_obs_r = []
+        for _, row_ed in edited_rec.iterrows():
+            o_id = int(row_ed["ORDEN"])
+            o_prev = orig_map_r[o_id]
+            new_r = bool(row_ed["RECIBIDO_BODEGA"])
+            old_r = bool(o_prev["RECIBIDO_BODEGA"])
+            new_obs = str(row_ed["OBS_RECEPCION"] or "")
+            old_obs = str(o_prev["OBS_RECEPCION"] or "")
+            if new_r and not old_r:
+                nuevos_rec.append((o_id, new_obs))
+            elif not new_r and old_r:
+                desm_rec.append(o_id)
+            elif new_obs != old_obs:
+                solo_obs_r.append((o_id, new_r, new_obs))
+
+        hay_filtro_r = len(df_r) < len(df_entregados)
+
+        with barra_accion_r:
+            st.markdown("##### ⚡ Acción sobre selección actual")
+            ra1, ra2, ra3 = st.columns([2, 1.5, 1.2])
+            obs_rec_lote = ra1.text_input(
+                "Novedad / Observación de retorno (opcional)",
+                placeholder="Ej: Retorno completo con actas y urnas",
+                key="obs_rec_lote",
+            )
+
+            if len(nuevos_rec) > 0:
+                ords_txt = ", ".join(str(x[0]) for x in nuevos_rec[:8]) + ("..." if len(nuevos_rec) > 8 else "")
+                r_btn_lbl = f"📦 Marcar {len(nuevos_rec)} seleccionado(s) RECIBIDO EN BODEGA (Orden: {ords_txt})"
+                r_btn_dis = False
+            elif len(solo_obs_r) > 0:
+                r_btn_lbl = f"💾 Guardar {len(solo_obs_r)} observación(es) de retorno"
+                r_btn_dis = False
+            elif hay_filtro_r and len(df_r) > 0:
+                r_btn_lbl = f"📦 Marcar {len(df_r)} filtrado(s) RECIBIDO EN BODEGA"
+                r_btn_dis = False
+            else:
+                r_btn_lbl = "Marque recintos en la tabla o filtre un camión"
+                r_btn_dis = True
+
+            if ra2.button(r_btn_lbl, type="primary", use_container_width=True, disabled=r_btn_dis, key="btn_rec_dyn"):
+                ts = now_ec_str()
+                recs = []
+                if len(nuevos_rec) > 0 or len(solo_obs_r) > 0:
+                    for o_id, row_obs in nuevos_rec:
+                        o_prev = orig_map_r[o_id]
+                        recs.append(
+                            {
+                                "orden": o_id,
+                                "entregado": 1,
+                                "fecha_hora_entrega": o_prev["FECHA_HORA_ENTREGA"],
+                                "usuario_entrega": o_prev["USUARIO_ENTREGA"],
+                                "obs_entrega": o_prev["OBS_ENTREGA"],
+                                "recibido_bodega": 1,
+                                "fecha_hora_finalizacion": ts,
+                                "usuario_recepcion": operador,
+                                "obs_recepcion": obs_rec_lote if obs_rec_lote else row_obs,
+                            }
+                        )
+                    for o_id, cur_r, row_obs in solo_obs_r:
+                        o_prev = orig_map_r[o_id]
+                        recs.append(
+                            {
+                                "orden": o_id,
+                                "entregado": 1,
+                                "fecha_hora_entrega": o_prev["FECHA_HORA_ENTREGA"],
+                                "usuario_entrega": o_prev["USUARIO_ENTREGA"],
+                                "obs_entrega": o_prev["OBS_ENTREGA"],
+                                "recibido_bodega": int(cur_r),
+                                "fecha_hora_finalizacion": o_prev["FECHA Y HORA DE FINALIZACION"],
+                                "usuario_recepcion": operador if cur_r else "",
+                                "obs_recepcion": row_obs,
+                            }
+                        )
+                else:
+                    for _, r in df_r.iterrows():
+                        recs.append(
+                            {
+                                "orden": int(r["ORDEN"]),
+                                "entregado": 1,
+                                "fecha_hora_entrega": r["FECHA_HORA_ENTREGA"],
+                                "usuario_entrega": r["USUARIO_ENTREGA"],
+                                "obs_entrega": r["OBS_ENTREGA"],
+                                "recibido_bodega": 1,
+                                "fecha_hora_finalizacion": r["FECHA Y HORA DE FINALIZACION"] if r["RECIBIDO_BODEGA"] and r["FECHA Y HORA DE FINALIZACION"] else ts,
+                                "usuario_recepcion": operador,
+                                "obs_recepcion": obs_rec_lote if obs_rec_lote else r["OBS_RECEPCION"],
+                            }
+                        )
+                upsert_status_records(recs)
+                st.success(f"Registrados {len(recs)} recinto(s) como RECIBIDO EN BODEGA ({ts}).")
+                st.rerun()
+
+            if len(desm_rec) > 0:
+                r_rev_lbl = f"↩️ Desmarcar {len(desm_rec)} retorno(s)"
+                r_rev_dis = False
+            elif hay_filtro_r and len(df_r) > 0:
+                r_rev_lbl = f"↩️ Desmarcar {len(df_r)} filtrado(s)"
+                r_rev_dis = False
+            else:
+                r_rev_lbl = "↩️ Desmarcar Retorno"
+                r_rev_dis = True
+
+            if ra3.button(r_rev_lbl, use_container_width=True, disabled=r_rev_dis, key="btn_rev_rec_dyn"):
+                ids_rev = desm_rec if len(desm_rec) > 0 else [int(x) for x in df_r["ORDEN"].tolist()]
+                recs = []
+                for o_id in ids_rev:
+                    o_prev = orig_map_r[o_id]
+                    recs.append(
                         {
                             "orden": o_id,
                             "entregado": 1,
                             "fecha_hora_entrega": o_prev["FECHA_HORA_ENTREGA"],
                             "usuario_entrega": o_prev["USUARIO_ENTREGA"],
                             "obs_entrega": o_prev["OBS_ENTREGA"],
-                            "recibido_bodega": int(new_rec),
-                            "fecha_hora_finalizacion": (o_prev["FECHA Y HORA DE FINALIZACION"] or ts) if new_rec else "",
-                            "usuario_recepcion": operador if new_rec else "",
-                            "obs_recepcion": new_obs if new_rec else "",
+                            "recibido_bodega": 0,
+                            "fecha_hora_finalizacion": "",
+                            "usuario_recepcion": "",
+                            "obs_recepcion": "",
                         }
                     )
-            if to_save:
-                upsert_status_records(to_save)
-                st.success(f"Guardados {len(to_save)} cambios de retorno a bodega.")
+                upsert_status_records(recs)
+                st.warning(f"Se desmarcó el retorno en {len(recs)} recinto(s).")
                 st.rerun()
-            else:
-                st.info("No se detectaron cambios pendientes.")
-```[cite: 24]
