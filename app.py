@@ -2,7 +2,7 @@ import os
 import streamlit as st
 
 st.set_page_config(
-    page_title="Control Logístico Electoral — Guayas 2026",
+    page_title="Control Logístico Electoral — DINDES 2026",
     page_icon="📦",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -25,8 +25,8 @@ col_b, col_r = st.columns([6, 1])
 col_b.markdown(
     f"""
     <div class="main-banner">
-        <h2>📦 Control Logístico de Material Electoral — Guayas 2026</h2>
-        <p>584 Recintos · 9,466 Paquetes/Kits · 25 Cantones · 499 Kits CDA &nbsp;|&nbsp; Almacenamiento: {storage_badge}</p>
+        <h2>📦 Control Logístico de Material Electoral — DINDES 2026</h2>
+        <p>584 Recintos · 9,466 Paquetes/Kits · 25 Cantones · 499 Kits CDA &nbsp;|&nbsp;</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -40,9 +40,9 @@ with col_r:
 pestana = st.radio(
     "Navegación",
     [
-        "📅 1. Consulta Comandantes (Horarios)",
-        "🔐 2. Control Entregas y Retorno Bodega",
-        "📊 3. Avance (%) Viernes / Sábado / Domingo",
+        "📅 1. Consulta de Horarios",
+        "🔐 2. Control Interno de Entregas Bodega",
+        "📊 3. Avance de Porcentaje Entrega-Recepción",
     ],
     horizontal=True,
     label_visibility="collapsed",
