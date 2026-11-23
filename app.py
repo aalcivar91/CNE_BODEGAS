@@ -41,6 +41,7 @@ col_b.markdown(
 )
 with col_r:
     if st.button("🔄 Actualizar ahora", use_container_width=True, help="Recargar estado y recalcular horarios"):
+        load_base_data.clear()
         load_status_df.clear()
         st.rerun()
     auto_ref = st.toggle("Auto-actualizar (60s)", value=False, key="auto_refresh_60s", help="Ideal para pantallas de monitoreo en tiempo real")
@@ -75,3 +76,6 @@ if auto_ref:
     _live_panel()
 else:
     _render_active_tab()
+
+
+
