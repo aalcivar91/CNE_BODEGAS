@@ -11,7 +11,12 @@ import streamlit as st
 TZ_EC = ZoneInfo("America/Guayaquil")
 EXCEL_PATH = "Plan_Entrega_Material_Electoral_Ordenado-v21.xlsx"
 SQLITE_PATH = "estado_despacho_guayas.db"
-
+BUFFER_MIN_BY_BLOCK = {
+    "Bloque 0 - Puná": 56.7,
+    "Bloque 1 - Ejército": 15.465,
+    "Bloque 2 - FAE": 63.6,
+    "Bloque 3 - Armada": 2.269,
+}
 
 def get_secret(key: str, default: str = "") -> str:
     try:
@@ -20,7 +25,7 @@ def get_secret(key: str, default: str = "") -> str:
         return os.environ.get(key, default)
 
 
-ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD", "GUAYAS2026")
+ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD", "DINDES2026")
 SUPABASE_URL = get_secret("SUPABASE_URL", "")
 SUPABASE_KEY = get_secret("SUPABASE_KEY", "")
 USE_SUPABASE = bool(SUPABASE_URL and SUPABASE_KEY)
@@ -221,6 +226,96 @@ def upsert_status_records(records: list[dict]):
         conn.close()
     load_status_df.clear()
 
+def apply_dynamic_eta(df_in: pd.DataFrame, now_dt: datetime | None = None) -> pd.DataFrame:
+    if now_dt is None:
+        now_dt = datetime.now(TZ_EC)
+
+    df_out = df_in.copy()
+    df_out["HORA_ESTIMADA"] = df_out["HORA_STR"]
+    df_out["DESFASE_MIN"] = 0
+    df_out["ESTADO_HORARIO"] = "🟢 A tiempo"
+
+    valid_dates = df_out["FECHA_DT"].notna()
+    for day_val, g_day in df_out[valid_dates].groupby(df_out.loc[valid_dates, "FECHA_DT"].dt.date, sort=True):
+        idxs = g_day.index.tolist()
+        if not idxs:
+            continue
+
+        groups = []
+        s_i = 0
+
+        def gkey(idx):
+            r = df_out.loc[idx]
+            return (r["BLOQUE"], r["FUERZA"], r["GT"], r["CAMION"])
+
+        cur_k = gkey(idxs[0])
+        for pos in range(1, len(idxs)):
+            k = gkey(idxs[pos])
+            if k != cur_k:
+                groups.append((cur_k, idxs[s_i:pos]))
+                cur_k = k
+                s_i = pos
+        groups.append((cur_k, idxs[s_i:]))
+
+        plan_starts, plan_ends = [], []
+        for (blk, fz, gt, cam), g_idxs in groups:
+            h_s = df_out.loc[g_idxs[0], "HORA_STR"]
+            try:
+                hh, mm = map(int, h_s.split(":"))
+            except Exception:
+                hh, mm = 0, 0
+            t_start = datetime(day_val.year, day_val.month, day_val.day, hh, mm, tzinfo=TZ_EC)
+            paq = int(df_out.loc[g_idxs, "NUMERO DE PAQUETES"].sum())
+            dur = (paq / 10.0) + BUFFER_MIN_BY_BLOCK.get(blk, 5.0)
+            plan_starts.append(t_start)
+            plan_ends.append(t_start + timedelta(minutes=dur))
+
+        for idx_g in range(len(groups) - 1):
+            if groups[idx_g][0][0] in ("Bloque 0 - Puná", "Bloque 2 - FAE"):
+                plan_ends[idx_g] = plan_starts[idx_g + 1]
+
+        current_delay = 0
+        is_same_day = (now_dt.date() == day_val)
+
+        for idx_g, ((blk, fz, gt, cam), g_idxs) in enumerate(groups):
+            t_prog_start = plan_starts[idx_g]
+            t_prog_end = plan_ends[idx_g]
+            all_done = bool(df_out.loc[g_idxs, "ENTREGADO"].all())
+
+            if all_done:
+                real_times = []
+                for ts_s in df_out.loc[g_idxs, "FECHA_HORA_ENTREGA"]:
+                    try:
+                        real_times.append(
+                            datetime.strptime(str(ts_s).strip(), "%d/%m/%Y %H:%M").replace(tzinfo=TZ_EC)
+                        )
+                    except Exception:
+                        pass
+                if real_times:
+                    t_real_end = max(real_times)
+                    if t_real_end.date() == day_val:
+                        current_delay = max(0, int(round((t_real_end - t_prog_end).total_seconds() / 60.0)))
+                    df_out.loc[g_idxs, "HORA_ESTIMADA"] = t_real_end.strftime("%H:%M")
+                else:
+                    df_out.loc[g_idxs, "HORA_ESTIMADA"] = df_out.loc[g_idxs, "HORA_STR"]
+                df_out.loc[g_idxs, "DESFASE_MIN"] = 0
+                df_out.loc[g_idxs, "ESTADO_HORARIO"] = "✅ Entregado"
+            else:
+                t_est_start = t_prog_start + timedelta(minutes=current_delay)
+                t_est_end = t_prog_end + timedelta(minutes=current_delay)
+                df_out.loc[g_idxs, "HORA_ESTIMADA"] = t_est_start.strftime("%H:%M")
+                df_out.loc[g_idxs, "DESFASE_MIN"] = current_delay
+
+                if is_same_day and now_dt > t_est_end:
+                    over_min = int(round((now_dt - t_est_end).total_seconds() / 60.0))
+                    df_out.loc[g_idxs, "ESTADO_HORARIO"] = f"🔴 En curso / Demora +{current_delay + over_min} min"
+                    current_delay += over_min
+                elif current_delay > 0:
+                    df_out.loc[g_idxs, "ESTADO_HORARIO"] = f"🟡 Reprogramado +{current_delay} min"
+                else:
+                    df_out.loc[g_idxs, "ESTADO_HORARIO"] = "🟢 A tiempo"
+
+    return df_out
 
 def get_merged_df() -> pd.DataFrame:
     base = load_base_data(EXCEL_PATH).copy()
@@ -265,6 +360,7 @@ def get_merged_df() -> pd.DataFrame:
         return "⏳ Pendiente"
 
     base["ESTADO"] = base.apply(estado_lbl, axis=1)
+    base = apply_dynamic_eta(base)
     return base
 
 
