@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 TZ_EC = ZoneInfo("America/Guayaquil")
-EXCEL_PATH = "Plan_Entrega_Material_Electoral_Ordenado-v21.xlsx"
+EXCEL_PATH = "Plan_Entrega_Material_Electoral_Ordenado-v22.xlsx"
 SQLITE_PATH = "estado_despacho_guayas.db"
 BUFFER_MIN_BY_BLOCK = {
     "Bloque 0 - Puná": 56.7,
