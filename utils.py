@@ -130,9 +130,8 @@ def render_alerta_reubicaciones(df_vista: pd.DataFrame, solo_si_exacto: bool = T
         + "\n".join(lineas)
     )
 
-
 @st.cache_data(show_spinner=False)
-def load_base_data(path: str = EXCEL_PATH) -> pd.DataFrame:
+def load_base_data(path: str = EXCEL_PATH, file_mtime: float = 0.0) -> pd.DataFrame:
     df = pd.read_excel(path, sheet_name="Base de Datos")
     df = df[pd.to_numeric(df["ORDEN"], errors="coerce").notna()].copy().reset_index(drop=True)
 
@@ -381,7 +380,8 @@ def apply_dynamic_eta(df_in: pd.DataFrame, now_dt: datetime | None = None) -> pd
 
 
 def get_merged_df(now_dt: datetime | None = None) -> pd.DataFrame:
-    base = load_base_data(EXCEL_PATH).copy()
+    mtime = os.path.getmtime(EXCEL_PATH) if os.path.exists(EXCEL_PATH) else 0.0
+    base = load_base_data(EXCEL_PATH, mtime).copy()
     st_df = load_status_df()
     if len(st_df) == 0:
         base["ENTREGADO"] = False
