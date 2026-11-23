@@ -1,8 +1,8 @@
+import re
+import unicodedata
 import pandas as pd
 import streamlit as st
 from utils import ADMIN_PASSWORD, now_ec_str, sort_camiones, upsert_status_records
-import re
-import unicodedata
 
 
 def _norm_text(s: str) -> str:
@@ -10,13 +10,39 @@ def _norm_text(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
-def _match_cod_paquete(cod_str: str, q_num: int) -> bool:
+def _match_cod_paquete(cod_str: str, q_raw: str) -> bool:
     nums = [int(x) for x in re.findall(r"\d+", str(cod_str))]
-    if len(nums) >= 2:
-        return nums[0] <= q_num <= nums[-1]
-    if len(nums) == 1:
-        return nums[0] == q_num
+    if not nums:
+        return False
+    start = nums[0]
+    end = nums[-1] if len(nums) >= 2 else nums[0]
+    q_num = int(q_raw)
+    # 1) Coincidencia exacta dentro del rango (ej. 900378 o 0900378)
+    if start <= q_num <= end:
+        return True
+    # 2) Coincidencia por terminación sin importar prefijo (ej. 377 -> 900377, 901377, 902377...)
+    if len(q_raw) <= 5 and (end - start) <= 500:
+        return any(str(n).endswith(q_raw) for n in range(start, end + 1))
     return False
+
+
+def _filtrar_busqueda(df_in: pd.DataFrame, busq: str) -> pd.DataFrame:
+    if not busq.strip():
+        return df_in
+    q_raw = busq.strip()
+    q = _norm_text(q_raw)
+    mask = (
+        df_in["RECINTO"].apply(_norm_text).str.contains(q, na=False, regex=False)
+        | df_in["ZONA"].apply(_norm_text).str.contains(q, na=False, regex=False)
+        | df_in["CANTON"].apply(_norm_text).str.contains(q, na=False, regex=False)
+        | df_in["PARROQUIA"].apply(_norm_text).str.contains(q, na=False, regex=False)
+        | df_in["CODIGO PAQUETES"].apply(_norm_text).str.contains(q, na=False, regex=False)
+        | df_in["CODIGO KIT CDA"].apply(_norm_text).str.contains(q, na=False, regex=False)
+    )
+    if q_raw.isdigit():
+        mask = mask | df_in["CODIGO PAQUETES"].apply(lambda x: _match_cod_paquete(x, q_raw))
+    return df_in[mask]
+
 
 def _reset_ent_filtros():
     st.session_state["e_fz"] = "TODAS"
@@ -47,7 +73,7 @@ def _on_r_fz_change():
 
 
 def render(df_all: pd.DataFrame):
-    st.subheader("Control Operativo de Bodega CNE — Despacho y Retorno")
+    st.subheader("Control Operativo de Bodega — Despacho y Retorno")
 
     if "auth_ok" not in st.session_state:
         st.session_state["auth_ok"] = False
@@ -78,13 +104,16 @@ def render(df_all: pd.DataFrame):
     modo_ctrl = st.radio(
         "Etapa operativa:",
         [
-            "🚚 Despacho desde Bodega a Jefes De Recinto",
-            "📦 Recibido en Bodega — Post-Elecciones",
+            "🚚 Despacho desde Bodega (Viernes / Sábado)",
+            "📦 Recibido en Bodega — Post-Elecciones (Domingo)",
         ],
         horizontal=True,
         key="ctrl_modo",
     )
 
+    # ==========================================================================
+    # MODO A: DESPACHO DESDE BODEGA (ENTREGADO)
+    # ==========================================================================
     if modo_ctrl.startswith("🚚"):
         fc1, fc2, fc3, fc4, fc5 = st.columns([1.1, 1.0, 1.0, 1.1, 0.9])
         fuerzas_e = ["TODAS"] + sorted(df_all["FUERZA"].unique().tolist())
@@ -116,25 +145,19 @@ def render(df_all: pd.DataFrame):
             st.button("🧹 Limpiar", use_container_width=True, key="btn_limpiar_e", on_click=_reset_ent_filtros)
 
         e_busq = st.text_input(
-            "🔎 Buscar por nombre de Recinto, Zona o Código de Paquete",
-            placeholder="Escriba parte del nombre del recinto (Ej: MILAGRO, 9 DE OCTUBRE, ROCAFUERTE...)",
+            "🔎 Buscar por nombre de Recinto, Zona, Parroquia o Código de Paquete",
+            placeholder="Ej: 377, 900378, MILAGRO, 9 DE OCTUBRE, KIT-0085...",
             key="e_busq_recinto",
         )
-        if e_busq.strip():
-            q_raw = e_busq.strip()
-            q = _norm_text(q_raw)
-            mask_e = (
-                df_e["RECINTO"].apply(_norm_text).str.contains(q, na=False, regex=False)
-                | df_e["ZONA"].apply(_norm_text).str.contains(q, na=False, regex=False)
-                | df_e["CANTON"].apply(_norm_text).str.contains(q, na=False, regex=False)
-                | df_e["PARROQUIA"].apply(_norm_text).str.contains(q, na=False, regex=False)
-                | df_e["CODIGO PAQUETES"].apply(_norm_text).str.contains(q, na=False, regex=False)
-                | df_e["CODIGO KIT CDA"].apply(_norm_text).str.contains(q, na=False, regex=False)
-            )
-            if q_raw.isdigit():
-                q_num = int(q_raw)
-                mask_e = mask_e | df_e["CODIGO PAQUETES"].apply(lambda x: _match_cod_paquete(x, q_num))
-            df_e = df_e[mask_e]
+        df_e = _filtrar_busqueda(df_e, e_busq)
+
+        st.markdown("##### ⚡ Acción rápida sobre el filtro actual")
+        qa1, qa2, qa3 = st.columns([2, 1.3, 1.3])
+        obs_lote = qa1.text_input(
+            "Observación de despacho (opcional)",
+            placeholder="Ej: Acta firmada sin novedad",
+            key="obs_ent_lote",
+        )
 
         if qa2.button(
             f"✅ Marcar {len(df_e)} recinto(s) como ENTREGADO",
@@ -182,7 +205,7 @@ def render(df_all: pd.DataFrame):
             st.warning(f"Se revirtieron {len(recs)} recintos a PENDIENTE.")
             st.rerun()
 
-        st.markdown("##### 📋 Edición individual por recinto")
+        st.markdown("##### 📋 Edición individual por recinto (Despacho)")
         edit_cols = [
             "ORDEN", "ENTREGADO", "FECHA_HORA_ENTREGA", "OBS_ENTREGA",
             "DIA_ENTREGA", "HORA_STR", "FUERZA", "GT", "CAMION",
@@ -233,12 +256,15 @@ def render(df_all: pd.DataFrame):
             else:
                 st.info("No se detectaron cambios pendientes por guardar.")
 
+    # ==========================================================================
+    # MODO B: RECIBIDO EN BODEGA (SOLO HABILITADO PARA RECINTOS YA ENTREGADOS)
+    # ==========================================================================
     else:
         df_entregados = df_all[df_all["ENTREGADO"]].copy()
         if len(df_entregados) == 0:
             st.warning(
                 "🔒 Todavía no hay recintos marcados como **ENTREGADO**. "
-                "La recepción en bodega (post-elecciones) se habilita automáticamente únicamente para los recintos que ya fueron entregados."
+                "La recepción en bodega (domingo post-elecciones) se habilita automáticamente únicamente para los recintos que ya fueron entregados."
             )
             return
 
@@ -276,22 +302,15 @@ def render(df_all: pd.DataFrame):
             st.button("🧹 Limpiar", use_container_width=True, key="btn_limpiar_r", on_click=_reset_rec_filtros)
 
         r_busq = st.text_input(
-            "🔎 Buscar por nombre de Recinto, Zona o Código de Paquete",
-            placeholder="Escriba parte del nombre del recinto (Ej: MILAGRO, 9 DE OCTUBRE, ROCAFUERTE...)",
+            "🔎 Buscar por nombre de Recinto, Zona, Parroquia o Código de Paquete",
+            placeholder="Ej: 377, 900378, MILAGRO, 9 DE OCTUBRE, KIT-0085...",
             key="r_busq_recinto",
         )
-        if r_busq.strip():
-            q = r_busq.strip().upper()
-            df_r = df_r[
-                df_r["RECINTO"].str.upper().str.contains(q, na=False)
-                | df_r["ZONA"].str.upper().str.contains(q, na=False)
-                | df_r["CANTON"].str.upper().str.contains(q, na=False)
-                | df_r["CODIGO PAQUETES"].str.upper().str.contains(q, na=False)
-            ]
+        df_r = _filtrar_busqueda(df_r, r_busq)
 
         ra1, ra2, ra3 = st.columns([2, 1.4, 1.2])
         obs_rec_lote = ra1.text_input(
-            "Novedad / Observación de retorno",
+            "Novedad / Observación de retorno (opcional)",
             placeholder="Ej: Retorno completo con actas y urnas",
             key="obs_rec_lote",
         )
@@ -389,3 +408,4 @@ def render(df_all: pd.DataFrame):
                 st.rerun()
             else:
                 st.info("No se detectaron cambios pendientes.")
+```[cite: 24]
