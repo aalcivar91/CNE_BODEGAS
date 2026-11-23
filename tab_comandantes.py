@@ -44,7 +44,7 @@ def _on_canton_change():
 
 def render(df_all: pd.DataFrame):
     col_t, col_btn = st.columns([5, 1.3])
-    col_t.subheader("Consulta de Fecha y Horario de Recolección")
+    col_t.subheader("Consulta de Fecha y Horario de Recolección (Tiempo Real)")
     with col_btn:
         st.write("")
         st.button("🧹 Limpiar búsqueda", use_container_width=True, on_click=_reset_filtros)
@@ -109,7 +109,6 @@ def render(df_all: pd.DataFrame):
             | df_f["CODIGO PAQUETES"].apply(_norm_text).str.contains(q, na=False, regex=False)
             | df_f["CODIGO KIT CDA"].apply(_norm_text).str.contains(q, na=False, regex=False)
         )
-        # Si escribe un código numérico exacto de paquete (ej: 907257), buscar también dentro del rango "907255 al 907265"
         if q_raw.isdigit():
             q_num = int(q_raw)
             mask_q = mask_q | df_f["CODIGO PAQUETES"].apply(lambda x: _match_cod_paquete(x, q_num))
@@ -124,15 +123,29 @@ def render(df_all: pd.DataFrame):
         return
 
     fechas_u = sorted([x for x in df_f["FECHA_STR"].unique().tolist() if x])
-    horas_u = sorted([h for h in df_f["HORA_STR"].unique().tolist() if h])
+    horas_prog = sorted([h for h in df_f["HORA_STR"].unique().tolist() if h])
+    df_pend = df_f[~df_f["ENTREGADO"]]
+    horas_est = sorted([h for h in (df_pend if len(df_pend) > 0 else df_f)["HORA_ESTIMADA"].unique().tolist() if h])
     bloques_u = list(dict.fromkeys([b for b in df_f["BLOQUE"].tolist() if b]))
-    franja_txt = f"{horas_u[0]} a {horas_u[-1]}" if len(horas_u) > 1 else (horas_u[0] if horas_u else "Por definir")
+
+    franja_prog = f"{horas_prog[0]} a {horas_prog[-1]}" if len(horas_prog) > 1 else (horas_prog[0] if horas_prog else "Por definir")
+    franja_est = f"{horas_est[0]} a {horas_est[-1]}" if len(horas_est) > 1 else (horas_est[0] if horas_est else franja_prog)
+    max_desfase = int(df_f["DESFASE_MIN"].max()) if len(df_f) > 0 else 0
+    tiene_demora_viva = df_f["ESTADO_HORARIO"].str.contains("Demora|Reprogramado", na=False).any()
+
+    box_cls = "franja-delay" if (max_desfase > 0 or tiene_demora_viva) else "franja-box"
+    desfase_badge = (
+        f" ⚠️ (+{max_desfase} min de desfase)"
+        if max_desfase > 0
+        else (" 🔴 (Turno anterior en demora)" if tiene_demora_viva else " 🟢 (A tiempo)")
+    )
 
     st.markdown(
         f"""
-        <div class="franja-box">
-            <strong>🗓️ Fecha(s) de Recolección:</strong> {' / '.join(fechas_u)} &nbsp;&nbsp;|&nbsp;&nbsp;
-            <strong>⏰ Franja Horaria de Retiro:</strong> {franja_txt} &nbsp;&nbsp;|&nbsp;&nbsp;
+        <div class="{box_cls}">
+            <strong>🗓️ Fecha(s):</strong> {' / '.join(fechas_u)} &nbsp;&nbsp;|&nbsp;&nbsp;
+            <strong>⏰ Programado:</strong> {franja_prog} &nbsp;&nbsp;|&nbsp;&nbsp;
+            <strong>🕒 Estimado Real:</strong> {franja_est}{desfase_badge}<br>
             <strong>📌 Bloque(s):</strong> {', '.join(bloques_u)}
         </div>
         """,
@@ -184,7 +197,10 @@ def render(df_all: pd.DataFrame):
 
     if vista == "🚚 Resumen por Camión":
         df_cam = (
-            df_f.groupby(["DIA_ENTREGA", "FECHA_STR", "HORA_STR", "BLOQUE", "FUERZA", "GT", "CAMION"], sort=False)
+            df_f.groupby(
+                ["DIA_ENTREGA", "FECHA_STR", "HORA_STR", "HORA_ESTIMADA", "ESTADO_HORARIO", "BLOQUE", "FUERZA", "GT", "CAMION"],
+                sort=False,
+            )
             .agg(
                 Cantones=("CANTON", lambda s: ", ".join(dict.fromkeys(s))),
                 Recintos=("RECINTO", "count"),
@@ -203,7 +219,9 @@ def render(df_all: pd.DataFrame):
             columns={
                 "DIA_ENTREGA": "Día",
                 "FECHA_STR": "Fecha",
-                "HORA_STR": "Hora Retiro",
+                "HORA_STR": "Hora Prog.",
+                "HORA_ESTIMADA": "Hora Estimada",
+                "ESTADO_HORARIO": "Estado Horario",
                 "BLOQUE": "Bloque",
                 "FUERZA": "Fuerza",
                 "CAMION": "Camión",
@@ -223,10 +241,10 @@ def render(df_all: pd.DataFrame):
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
     else:
-        # Prioridad visual: RECINTO y CODIGO PAQUETES al frente de la tabla
         cols_show = [
             "ORDEN", "RECINTO", "CODIGO PAQUETES", "NUMERO DE PAQUETES",
-            "FECHA_STR", "HORA_STR", "CANTON", "PARROQUIA", "ZONA",
+            "HORA_STR", "HORA_ESTIMADA", "ESTADO_HORARIO",
+            "FECHA_STR", "CANTON", "PARROQUIA", "ZONA",
             "FUERZA", "GT", "CAMION", "ESTADO",
             "CDA", "KITS CDA", "CODIGO KIT CDA",
             "BIOMBOS", "BIOMBO MAP", "URNAS BLANCAS", "URNAS CAFÉS", "BLOQUE",
@@ -234,7 +252,9 @@ def render(df_all: pd.DataFrame):
         df_show = df_f[cols_show].rename(
             columns={
                 "FECHA_STR": "FECHA RETIRO",
-                "HORA_STR": "HORA RETIRO",
+                "HORA_STR": "HORA PROG.",
+                "HORA_ESTIMADA": "HORA ESTIMADA",
+                "ESTADO_HORARIO": "ESTADO HORARIO",
                 "CODIGO PAQUETES": "CÓDIGO PAQUETE ELECTORAL",
                 "NUMERO DE PAQUETES": "PAQUETES",
             }
@@ -247,6 +267,8 @@ def render(df_all: pd.DataFrame):
             column_config={
                 "RECINTO": st.column_config.TextColumn("RECINTO", width="large"),
                 "CÓDIGO PAQUETE ELECTORAL": st.column_config.TextColumn("CÓDIGO PAQUETE ELECTORAL", width="medium"),
+                "HORA ESTIMADA": st.column_config.TextColumn("🕒 HORA ESTIMADA"),
+                "ESTADO HORARIO": st.column_config.TextColumn("ESTADO HORARIO", width="medium"),
             },
         )
         st.download_button(
