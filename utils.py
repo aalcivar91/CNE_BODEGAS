@@ -12,10 +12,10 @@ TZ_EC = ZoneInfo("America/Guayaquil")
 EXCEL_PATH = "Plan_Entrega_Material_Electoral_Ordenado-v22.xlsx"
 SQLITE_PATH = "estado_despacho_guayas.db"
 BUFFER_MIN_BY_BLOCK = {
-    "Bloque 0 - Puná": 56.7,
-    "Bloque 1 - Ejército": 15.465,
-    "Bloque 2 - FAE": 63.6,
-    "Bloque 3 - Armada": 2.243,
+    "Bloque 0 - Puná": 55.05,
+    "Bloque 1 - Ejército": 8.85,
+    "Bloque 2 - FAE": 35.40,
+    "Bloque 3 - Armada": 1.66,
 }
 
 def get_secret(key: str, default: str = "") -> str:
@@ -266,7 +266,7 @@ def apply_dynamic_eta(df_in: pd.DataFrame, now_dt: datetime | None = None) -> pd
                 hh, mm = 0, 0
             t_start = datetime(day_val.year, day_val.month, day_val.day, hh, mm, tzinfo=TZ_EC)
             paq = int(df_out.loc[g_idxs, "NUMERO DE PAQUETES"].sum())
-            dur = (paq / 10.0) + BUFFER_MIN_BY_BLOCK.get(blk, 5.0)
+            dur = (paq / (400.0 / 60.0)) + BUFFER_MIN_BY_BLOCK.get(blk, 5.0)
             plan_starts.append(t_start)
             plan_ends.append(t_start + timedelta(minutes=dur))
 
