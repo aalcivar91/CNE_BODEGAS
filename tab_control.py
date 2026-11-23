@@ -2,9 +2,15 @@ import re
 import unicodedata
 import pandas as pd
 import streamlit as st
-from utils import ADMIN_PASSWORD, now_ec_str, sort_camiones, upsert_status_records
+from utils import (
+    ADMIN_PASSWORD,
+    now_ec_str,
+    render_alerta_reubicaciones,
+    sort_camiones,
+    upsert_status_records,
+)
 
-OPERADOR_DEFAULT = "Bodega CNE 2026 _ CONTROL DINDES"
+OPERADOR_DEFAULT = "Bodega CNE Guayas - DINDES 2026"
 
 
 def _norm_text(s: str) -> str:
@@ -33,6 +39,7 @@ def _filtrar_busqueda(df_in: pd.DataFrame, busq: str) -> pd.DataFrame:
     q = _norm_text(q_raw)
     mask = (
         df_in["RECINTO"].apply(_norm_text).str.contains(q, na=False, regex=False)
+        | df_in["REUBICACION"].apply(_norm_text).str.contains(q, na=False, regex=False)
         | df_in["ZONA"].apply(_norm_text).str.contains(q, na=False, regex=False)
         | df_in["CANTON"].apply(_norm_text).str.contains(q, na=False, regex=False)
         | df_in["PARROQUIA"].apply(_norm_text).str.contains(q, na=False, regex=False)
@@ -193,7 +200,6 @@ def render(df_all: pd.DataFrame):
             st.write("")
             st.button("🧹 Limpiar", use_container_width=True, key="btn_limpiar_e", on_click=_reset_ent_filtros)
 
-        # Fila 2 de filtros: Cantón, Parroquia y Zona
         fg1, fg2, fg3 = st.columns(3)
         e_can_opts = ["TODOS"] + sorted([x for x in df_e["CANTON"].unique().tolist() if x])
         if st.session_state.get("e_can", "TODOS") not in e_can_opts:
@@ -230,14 +236,16 @@ def render(df_all: pd.DataFrame):
         df_e = _filtrar_busqueda(df_e, e_busq)
         df_e = _filtrar_por_ordenes(df_e, e_ordenes)
 
+        render_alerta_reubicaciones(df_e)
+
         barra_accion_e = st.container()
 
-        st.markdown("##### 📋 Selección individual por recinto (marque las casillas y pulse el botón superior)")
+        st.markdown("##### 📋 Selección individual por recinto")
         edit_cols = [
             "ORDEN", "ENTREGADO", "FECHA_HORA_ENTREGA", "OBS_ENTREGA",
             "DIA_ENTREGA", "HORA_STR", "FUERZA", "GT", "CAMION",
-            "CANTON", "PARROQUIA", "ZONA", "RECINTO", "NUMERO DE PAQUETES",
-            "CODIGO PAQUETES", "CODIGO KIT CDA", "PERCHA", "NIVEL (POR PERCHA)",
+            "CANTON", "PARROQUIA", "ZONA", "RECINTO", "ALERTA_REUBICACION",
+            "NUMERO DE PAQUETES", "CODIGO PAQUETES", "CODIGO KIT CDA", "PERCHA", "NIVEL (POR PERCHA)",
         ]
         edited_ent = st.data_editor(
             df_e[edit_cols],
@@ -250,6 +258,7 @@ def render(df_all: pd.DataFrame):
                 "OBS_ENTREGA": st.column_config.TextColumn("Observación Entrega"),
                 "FECHA_HORA_ENTREGA": st.column_config.TextColumn("Fecha/Hora Entrega"),
                 "HORA_STR": st.column_config.TextColumn("Hora Prog."),
+                "ALERTA_REUBICACION": st.column_config.TextColumn("⚠️ Alerta Reubicación", width="large"),
             },
             key="editor_entregas",
         )
@@ -278,7 +287,7 @@ def render(df_all: pd.DataFrame):
             st.markdown("##### ⚡ Acción sobre selección actual")
             qa1, qa2, qa3 = st.columns([2, 1.5, 1.2])
             obs_lote = qa1.text_input(
-                "Observación de despacho",
+                "Observación de despacho (opcional)",
                 placeholder="Ej: Acta firmada sin novedad",
                 key="obs_ent_lote",
             )
@@ -425,7 +434,6 @@ def render(df_all: pd.DataFrame):
             st.write("")
             st.button("🧹 Limpiar", use_container_width=True, key="btn_limpiar_r", on_click=_reset_rec_filtros)
 
-        # Fila 2 de filtros: Cantón, Parroquia y Zona
         rg1, rg2, rg3 = st.columns(3)
         r_can_opts = ["TODOS"] + sorted([x for x in df_r["CANTON"].unique().tolist() if x])
         if st.session_state.get("r_can", "TODOS") not in r_can_opts:
@@ -462,14 +470,16 @@ def render(df_all: pd.DataFrame):
         df_r = _filtrar_busqueda(df_r, r_busq)
         df_r = _filtrar_por_ordenes(df_r, r_ordenes)
 
+        render_alerta_reubicaciones(df_r)
+
         barra_accion_r = st.container()
 
         st.markdown("##### 📋 Selección individual por recinto (Retorno a Bodega)")
         rec_cols = [
             "ORDEN", "RECIBIDO_BODEGA", "FECHA Y HORA DE FINALIZACION", "OBS_RECEPCION",
             "FECHA_HORA_ENTREGA", "FUERZA", "GT", "CAMION",
-            "CANTON", "PARROQUIA", "ZONA", "RECINTO", "NUMERO DE PAQUETES",
-            "CODIGO PAQUETES", "CODIGO KIT CDA", "PERCHA", "NIVEL (POR PERCHA)",
+            "CANTON", "PARROQUIA", "ZONA", "RECINTO", "ALERTA_REUBICACION",
+            "NUMERO DE PAQUETES", "CODIGO PAQUETES", "CODIGO KIT CDA", "PERCHA", "NIVEL (POR PERCHA)",
         ]
         edited_rec = st.data_editor(
             df_r[rec_cols],
@@ -480,6 +490,7 @@ def render(df_all: pd.DataFrame):
             column_config={
                 "RECIBIDO_BODEGA": st.column_config.CheckboxColumn("RECIBIDO EN BODEGA", default=False),
                 "OBS_RECEPCION": st.column_config.TextColumn("Observación Retorno"),
+                "ALERTA_REUBICACION": st.column_config.TextColumn("⚠️ Alerta Reubicación", width="large"),
             },
             key="editor_recepcion",
         )
