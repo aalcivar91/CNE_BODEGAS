@@ -2,7 +2,7 @@ import re
 import unicodedata
 import pandas as pd
 import streamlit as st
-from utils import sort_camiones, to_excel_bytes
+from utils import render_alerta_reubicaciones, sort_camiones, to_excel_bytes
 
 
 def _norm_text(s: str) -> str:
@@ -10,12 +10,17 @@ def _norm_text(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
-def _match_cod_paquete(cod_str: str, q_num: int) -> bool:
+def _match_cod_paquete(cod_str: str, q_raw: str) -> bool:
     nums = [int(x) for x in re.findall(r"\d+", str(cod_str))]
-    if len(nums) >= 2:
-        return nums[0] <= q_num <= nums[-1]
-    if len(nums) == 1:
-        return nums[0] == q_num
+    if not nums:
+        return False
+    start = nums[0]
+    end = nums[-1] if len(nums) >= 2 else nums[0]
+    q_num = int(q_raw)
+    if start <= q_num <= end:
+        return True
+    if len(q_raw) <= 5 and (end - start) <= 500:
+        return any(str(n).endswith(q_raw) for n in range(start, end + 1))
     return False
 
 
@@ -95,7 +100,7 @@ def render(df_all: pd.DataFrame):
 
     busq = c7.text_input(
         "Buscar Cantón / Parroquia / Recinto / Zona / Código Paquete",
-        placeholder="Ej: EL EMPALME, MILAGRO, 900015, KIT-0085...",
+        placeholder="Ej: EL EMPALME, MILAGRO, 377, 900015, KIT-0085...",
         key="q_busq",
     )
     if busq.strip():
@@ -106,12 +111,12 @@ def render(df_all: pd.DataFrame):
             | df_f["PARROQUIA"].apply(_norm_text).str.contains(q, na=False, regex=False)
             | df_f["ZONA"].apply(_norm_text).str.contains(q, na=False, regex=False)
             | df_f["RECINTO"].apply(_norm_text).str.contains(q, na=False, regex=False)
+            | df_f["REUBICACION"].apply(_norm_text).str.contains(q, na=False, regex=False)
             | df_f["CODIGO PAQUETES"].apply(_norm_text).str.contains(q, na=False, regex=False)
             | df_f["CODIGO KIT CDA"].apply(_norm_text).str.contains(q, na=False, regex=False)
         )
         if q_raw.isdigit():
-            q_num = int(q_raw)
-            mask_q = mask_q | df_f["CODIGO PAQUETES"].apply(lambda x: _match_cod_paquete(x, q_num))
+            mask_q = mask_q | df_f["CODIGO PAQUETES"].apply(lambda x: _match_cod_paquete(x, q_raw))
         df_f = df_f[mask_q]
 
     solo_cda = c8.checkbox("Solo CDA", key="q_cda")
@@ -151,6 +156,9 @@ def render(df_all: pd.DataFrame):
         """,
         unsafe_allow_html=True,
     )
+
+    # Alerta automática si existen recintos reubicados en la selección actual
+    render_alerta_reubicaciones(df_f)
 
     cantones_list = list(dict.fromkeys([x for x in df_f["CANTON"].tolist() if x]))
     camiones_list = sort_camiones([x for x in df_f["CAMION"].unique().tolist() if x and x != "Sin asignar"])
@@ -204,6 +212,7 @@ def render(df_all: pd.DataFrame):
             .agg(
                 Cantones=("CANTON", lambda s: ", ".join(dict.fromkeys(s))),
                 Recintos=("RECINTO", "count"),
+                Reubicados=("REUBICACION", lambda s: int((s != "").sum())),
                 Paquetes=("NUMERO DE PAQUETES", "sum"),
                 Biombos=("BIOMBOS", "sum"),
                 Biombo_MAP=("BIOMBO MAP", "sum"),
@@ -235,14 +244,14 @@ def render(df_all: pd.DataFrame):
         )
         st.dataframe(df_cam, use_container_width=True, hide_index=True, height=480)
         st.download_button(
-            "⬇️ Descargar Resumen por Camión",
+            "⬇️ Descargar Resumen por Camión (Excel)",
             data=to_excel_bytes(df_cam, "Resumen_Camiones"),
             file_name="Horarios_Por_Camion_Guayas2026.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
     else:
         cols_show = [
-            "ORDEN", "RECINTO", "CODIGO PAQUETES", "NUMERO DE PAQUETES",
+            "ORDEN", "RECINTO", "ALERTA_REUBICACION", "CODIGO PAQUETES", "NUMERO DE PAQUETES",
             "HORA_STR", "HORA_ESTIMADA", "ESTADO_HORARIO",
             "FECHA_STR", "CANTON", "PARROQUIA", "ZONA",
             "FUERZA", "GT", "CAMION", "ESTADO",
@@ -251,6 +260,7 @@ def render(df_all: pd.DataFrame):
         ]
         df_show = df_f[cols_show].rename(
             columns={
+                "ALERTA_REUBICACION": "⚠️ ALERTA REUBICACIÓN",
                 "FECHA_STR": "FECHA RETIRO",
                 "HORA_STR": "HORA PROG.",
                 "HORA_ESTIMADA": "HORA ESTIMADA",
@@ -266,13 +276,14 @@ def render(df_all: pd.DataFrame):
             height=480,
             column_config={
                 "RECINTO": st.column_config.TextColumn("RECINTO", width="large"),
+                "⚠️ ALERTA REUBICACIÓN": st.column_config.TextColumn("⚠️ ALERTA REUBICACIÓN", width="large"),
                 "CÓDIGO PAQUETE ELECTORAL": st.column_config.TextColumn("CÓDIGO PAQUETE ELECTORAL", width="medium"),
                 "HORA ESTIMADA": st.column_config.TextColumn("🕒 HORA ESTIMADA"),
                 "ESTADO HORARIO": st.column_config.TextColumn("ESTADO HORARIO", width="medium"),
             },
         )
         st.download_button(
-            "⬇️ Descargar Detalle Filtrado",
+            "⬇️ Descargar Detalle Filtrado (Excel)",
             data=to_excel_bytes(df_show, "Detalle_Recintos"),
             file_name="Horarios_Recintos_Guayas2026.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
