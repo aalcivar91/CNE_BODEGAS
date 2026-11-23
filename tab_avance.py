@@ -101,7 +101,7 @@ def render(df_all: pd.DataFrame):
         .reset_index()
     )
     res_gt["% Entregado"] = (res_gt["Entregados"] / res_gt["Total_Recintos"] * 100).round(1)
-    res_gt["% Recibido Bodega"] = (res_gt["Recibidos_BODEGA"] / res_gt["Total_Recintos"] * 100).round(1)
+    res_gt["% Recibido Bodega"] = (res_gt["Recibidos_Bodega"] / res_gt["Total_Recintos"] * 100).round(1)
     st.dataframe(res_gt, use_container_width=True, hide_index=True)
 
     export_cols = [
