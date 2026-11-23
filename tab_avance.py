@@ -23,6 +23,7 @@ def render(df_all: pd.DataFrame):
     tot_paq_ok = int(df_all.loc[df_all["ENTREGADO"], "NUMERO DE PAQUETES"].sum())
     ret_rec_ok = int(df_all["RECIBIDO_BODEGA"].sum())
     ret_paq_ok = int(df_all.loc[df_all["RECIBIDO_BODEGA"], "NUMERO DE PAQUETES"].sum())
+    tot_paq_plan = int(df_all["NUMERO DE PAQUETES"].sum())
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric(
@@ -36,21 +37,21 @@ def render(df_all: pd.DataFrame):
         f"{sab_rec_ok}/{len(df_sab)} rec. · {sab_paq_ok:,}/{int(df_sab['NUMERO DE PAQUETES'].sum()):,} paq.",
     )
     m3.metric(
-        "🚚 Total Entregado (Vie + Sáb)",
+        "🚚 Total Entregado",
         f"{_pct(tot_rec_ok, len(df_all)):.1f}%",
-        f"{tot_rec_ok}/{len(df_all)} rec. · {tot_paq_ok:,}/9,466 paq.",
+        f"{tot_rec_ok}/{len(df_all)} rec. · {tot_paq_ok:,}/{tot_paq_plan:,} paq.",
     )
     m4.metric(
-        "📦 Domingo 29/11 (Recibido Bodega)",
+        "📦 Repliegue del Material Electoral",
         f"{_pct(ret_rec_ok, len(df_all)):.1f}%",
-        f"{ret_rec_ok}/{len(df_all)} rec. · {ret_paq_ok:,}/9,466 paq.",
+        f"{ret_rec_ok}/{len(df_all)} rec. · {ret_paq_ok:,}//{tot_paq_plan:,} paq.",
     )
 
     st.write("**Progreso Viernes 27/11**")
     st.progress(min(1.0, _pct(vie_rec_ok, len(df_vie)) / 100.0))
     st.write("**Progreso Sábado 28/11**")
     st.progress(min(1.0, _pct(sab_rec_ok, len(df_sab)) / 100.0))
-    st.write("**Progreso Retorno a Bodega (Domingo 29/11)**")
+    st.write("**Progreso del Repliegue**")
     st.progress(min(1.0, _pct(ret_rec_ok, len(df_all)) / 100.0))
 
     st.divider()
