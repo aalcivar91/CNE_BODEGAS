@@ -108,11 +108,14 @@ def _fmt_alerta_reub(val: str) -> str:
     return f"⚠️ Reubicación por mal estado de recinto, usted debe ir a {v}"
 
 
-def render_alerta_reubicaciones(df_vista: pd.DataFrame):
-    if "ALERTA_REUBICACION" not in df_vista.columns:
+def render_alerta_reubicaciones(df_vista: pd.DataFrame, solo_si_exacto: bool = True):
+    if "ALERTA_REUBICACION" not in df_vista.columns or len(df_vista) == 0:
         return
     df_al = df_vista[df_vista["ALERTA_REUBICACION"] != ""]
     if len(df_al) == 0:
+        return
+    # Si hay otros recintos no afectados en pantalla, no mostrar el banner
+    if solo_si_exacto and len(df_al) != len(df_vista):
         return
     lineas = []
     for _, r in df_al.iterrows():
