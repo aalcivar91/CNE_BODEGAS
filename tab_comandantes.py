@@ -235,7 +235,7 @@ def render(df_all: pd.DataFrame):
         )
         st.dataframe(df_cam, use_container_width=True, hide_index=True, height=480)
         st.download_button(
-            "⬇️ Descargar Resumen por Camión (Excel)",
+            "⬇️ Descargar Resumen por Camión",
             data=to_excel_bytes(df_cam, "Resumen_Camiones"),
             file_name="Horarios_Por_Camion_Guayas2026.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -272,7 +272,7 @@ def render(df_all: pd.DataFrame):
             },
         )
         st.download_button(
-            "⬇️ Descargar Detalle Filtrado (Excel)",
+            "⬇️ Descargar Detalle Filtrado",
             data=to_excel_bytes(df_show, "Detalle_Recintos"),
             file_name="Horarios_Recintos_Guayas2026.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
