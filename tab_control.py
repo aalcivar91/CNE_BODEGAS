@@ -1,7 +1,22 @@
 import pandas as pd
 import streamlit as st
 from utils import ADMIN_PASSWORD, now_ec_str, sort_camiones, upsert_status_records
+import re
+import unicodedata
 
+
+def _norm_text(s: str) -> str:
+    s = str(s).upper().strip()
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
+def _match_cod_paquete(cod_str: str, q_num: int) -> bool:
+    nums = [int(x) for x in re.findall(r"\d+", str(cod_str))]
+    if len(nums) >= 2:
+        return nums[0] <= q_num <= nums[-1]
+    if len(nums) == 1:
+        return nums[0] == q_num
+    return False
 
 def _reset_ent_filtros():
     st.session_state["e_fz"] = "TODAS"
