@@ -1,3 +1,4 @@
+import html
 import re
 import unicodedata
 import pandas as pd
@@ -10,7 +11,7 @@ from utils import (
     upsert_status_records,
 )
 
-OPERADOR_DEFAULT = "Bodega CNE Guayas - DINDES 2026"
+OPERADOR_DEFAULT = "Bodega Base Naval Sur"
 
 
 def _norm_text(s: str) -> str:
@@ -66,6 +67,247 @@ def _filtrar_por_ordenes(df_in: pd.DataFrame, texto_ordenes: str) -> pd.DataFram
         elif token.isdigit():
             ids.add(int(token))
     return df_in[df_in["ORDEN"].isin(ids)] if ids else df_in
+
+
+def _parse_nivel_por_percha(nivel_str: str) -> list[dict]:
+    items = []
+    if not nivel_str or str(nivel_str).strip().lower() == "nan":
+        return items
+    for raw_line in str(nivel_str).split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split(";") if p.strip()]
+        if not parts:
+            continue
+        percha = parts[0]
+        rest = parts[1:]
+        a_slots, b_slots = set(), set()
+        a_lbls, b_lbls = [], []
+        cant_match = re.search(r"\((\d+)\)", line)
+        cant = f"{cant_match.group(1)} paq." if cant_match else ""
+
+        for seg in rest:
+            seg_clean = re.sub(r"\(\d+\)", "", seg).strip()
+            for m in re.finditer(r"\b([AB])(\d+)(?:\s*-\s*[AB]?(\d+))?\b", seg_clean):
+                lvl = m.group(1)
+                n1 = int(m.group(2))
+                n2 = int(m.group(3)) if m.group(3) else n1
+                rng = set(range(min(n1, n2), max(n1, n2) + 1))
+                lbl = f"{lvl}{n1}-{lvl}{n2}" if n2 != n1 else f"{lvl}{n1}"
+                if lvl == "A":
+                    a_slots.update(rng)
+                    a_lbls.append(lbl)
+                else:
+                    b_slots.update(rng)
+                    b_lbls.append(lbl)
+
+        items.append(
+            {
+                "percha": percha,
+                "a_slots": a_slots,
+                "b_slots": b_slots,
+                "a_lbl": ", ".join(a_lbls),
+                "b_lbl": ", ".join(b_lbls),
+                "cant": cant,
+            }
+        )
+    return items
+
+
+def _collect_perchas(df_sub: pd.DataFrame) -> list[str]:
+    seen = []
+    for val in df_sub["PERCHA"].tolist():
+        for p in str(val).split(";"):
+            p_clean = p.strip()
+            if p_clean and p_clean not in seen:
+                seen.append(p_clean)
+    return seen
+
+
+def _build_rack_bar(lvl: str, active_slots: set[int]) -> str:
+    color_on = "#0284C7" if lvl == "A" else "#059669"
+    border_on = "#38BDF8" if lvl == "A" else "#34D399"
+    cells = []
+    for i in range(1, 16):
+        if i in active_slots:
+            style = (
+                f"background:{color_on};color:#FFFFFF;border:1px solid {border_on};"
+                "font-weight:700;"
+            )
+        else:
+            style = "background:#0F172A;color:#475569;border:1px solid #1E293B;font-weight:400;"
+        cells.append(
+            f'<span style="display:inline-block;width:22px;text-align:center;'
+            f'font-size:0.70rem;padding:2px 0;border-radius:4px;margin:1px;{style}">{i}</span>'
+        )
+    lvl_badge_bg = "#0369A1" if lvl == "A" else "#047857"
+    return (
+        f'<div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap;">'
+        f'<span style="background:{lvl_badge_bg};color:#FFF;font-size:0.70rem;font-weight:700;'
+        f'padding:2px 6px;border-radius:4px;min-width:52px;text-align:center;">NIVEL {lvl}</span>'
+        f'{"".join(cells)}</div>'
+    )
+
+
+def _render_resumen_y_picking(df_view: pd.DataFrame, titulo_ctx: str = "selección actual"):
+    if len(df_view) == 0:
+        return
+
+    cantones_list = list(dict.fromkeys([x for x in df_view["CANTON"].tolist() if x]))
+    camiones_list = sort_camiones([x for x in df_view["CAMION"].unique().tolist() if x and x != "Sin asignar"])
+    if "Sin asignar" in df_view["CAMION"].unique().tolist():
+        camiones_list.append("Sin asignar")
+    perchas_list = _collect_perchas(df_view)
+
+    cantones_str = ", ".join(cantones_list[:12]) + (f" (+{len(cantones_list)-12} más)" if len(cantones_list) > 12 else "")
+    camiones_str = ", ".join(camiones_list[:25]) + (f" (+{len(camiones_list)-25} más)" if len(camiones_list) > 25 else "")
+    perchas_str = " · ".join(perchas_list[:14]) + (f" (+{len(perchas_list)-14} más)" if len(perchas_list) > 14 else "")
+
+    st.markdown(
+        f"""
+        <div class="resumen-filtro-box">
+            <strong>🏛️ Cantones ({len(cantones_list)}):</strong> {html.escape(cantones_str)}<br>
+            <strong>🚚 Camiones ({len(camiones_list)}):</strong> {html.escape(camiones_str)}<br>
+            <strong>🗄️ Perchas ({len(perchas_list)}):</strong> {html.escape(perchas_str) if perchas_str else "—"}<br>
+            <strong>🏫 Recintos:</strong> {len(df_view):,} recintos en {html.escape(titulo_ctx)}.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
+    kpis = [
+        (k1, f"{len(df_view):,}", "Recintos"),
+        (k2, f"{int(df_view['NUMERO DE PAQUETES'].sum()):,}", "Paquetes / Kits"),
+        (k3, f"{int(df_view['BIOMBOS'].sum()):,}", "Biombos"),
+        (k4, f"{int(df_view['BIOMBO MAP'].sum()):,}", "Biombo MAP"),
+        (k5, f"{int(df_view['URNAS BLANCAS'].sum()):,}", "Urnas Blancas"),
+        (k6, f"{int(df_view['URNAS CAFÉS'].sum()):,}", "Urnas Cafés"),
+        (k7, f"{int(df_view['KITS CDA'].sum()):,}", "Kits CDA"),
+    ]
+    for col_k, val, lbl in kpis:
+        col_k.markdown(
+            f'<div class="kpi-card"><div class="kpi-val">{val}</div><div class="kpi-lbl">{lbl}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.write("")
+
+    # Guía visual de bodega (Percha, Nivel A/B y Códigos a sacar)
+    auto_expand = len(df_view) <= 15
+    with st.expander(
+        f"🗄️ Guía Visual de Bodega — Percha, Nivel (A / B) y Códigos a sacar ({len(df_view)} recinto(s))",
+        expanded=auto_expand,
+    ):
+        if len(df_view) > 25:
+            st.info(
+                f"Hay **{len(df_view)}** recintos en pantalla. Filtre por **Camión, Cantón, Parroquia, Recinto, Código** "
+                "o **marque las casillas** en la tabla para visualizar el mapa detallado de perchas y niveles sin saturar la pantalla."
+            )
+            return
+
+        cards_html = []
+        for _, r in df_view.iterrows():
+            ord_n = int(r["ORDEN"])
+            recinto = html.escape(str(r["RECINTO"]))
+            canton = html.escape(str(r["CANTON"]))
+            parr = html.escape(str(r["PARROQUIA"]))
+            zona = html.escape(str(r["ZONA"]))
+            cam = html.escape(str(r["CAMION"]))
+            gt_txt = f" · {html.escape(str(r['GT']))}" if str(r["GT"]).strip() else ""
+            paq_n = int(r["NUMERO DE PAQUETES"])
+            cod_paq = html.escape(str(r["CODIGO PAQUETES"]))
+            cod_cda = html.escape(str(r["CODIGO KIT CDA"])) if str(r["CODIGO KIT CDA"]).strip() else "Sin Kit CDA"
+            kits_cda = int(r["KITS CDA"])
+            biombos = int(r["BIOMBOS"])
+            b_map = int(r["BIOMBO MAP"])
+            urnas_b = int(r["URNAS BLANCAS"])
+            urnas_c = int(r["URNAS CAFÉS"])
+            estado = html.escape(str(r["ESTADO"]))
+            alerta = str(r.get("ALERTA_REUBICACION", "")).strip()
+
+            shelves = _parse_nivel_por_percha(r["NIVEL (POR PERCHA)"])
+            shelves_blocks = []
+            for sh in shelves:
+                p_name = html.escape(sh["percha"])
+                is_der = "DERECHO" in sh["percha"].upper()
+                p_bg = "#1D4ED8" if is_der else "#0F766E"
+                p_border = "#60A5FA" if is_der else "#2DD4BF"
+
+                badges = []
+                if sh["a_lbl"]:
+                    badges.append(
+                        f'<span style="background:#0369A1;color:#E0F2FE;padding:2px 8px;border-radius:999px;'
+                        f'font-size:0.78rem;font-weight:700;">Nivel A: {html.escape(sh["a_lbl"])}</span>'
+                    )
+                if sh["b_lbl"]:
+                    badges.append(
+                        f'<span style="background:#047857;color:#D1FAE5;padding:2px 8px;border-radius:999px;'
+                        f'font-size:0.78rem;font-weight:700;">Nivel B: {html.escape(sh["b_lbl"])}</span>'
+                    )
+                if sh["cant"]:
+                    badges.append(
+                        f'<span style="background:#334155;color:#F8FAFC;padding:2px 8px;border-radius:999px;'
+                        f'font-size:0.75rem;">{html.escape(sh["cant"])}</span>'
+                    )
+
+                rack_a = _build_rack_bar("A", sh["a_slots"]) if sh["a_slots"] else ""
+                rack_b = _build_rack_bar("B", sh["b_slots"]) if sh["b_slots"] else ""
+
+                shelves_blocks.append(
+                    f'<div style="background:#0B1220;border:1px solid #334155;border-left:4px solid {p_border};'
+                    f'border-radius:8px;padding:8px 10px;margin-top:6px;">'
+                    f'  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">'
+                    f'    <span style="background:{p_bg};color:#FFF;padding:3px 10px;border-radius:6px;'
+                    f'font-size:0.84rem;font-weight:700;">🗄️ PERCHA {p_name}</span>'
+                    f'    {"".join(badges)}'
+                    f'  </div>'
+                    f'  {rack_a}{rack_b}'
+                    f'</div>'
+                )
+
+            alerta_html = ""
+            if alerta:
+                alerta_html = (
+                    f'<div style="background:#450A0A;border:1px solid #DC2626;color:#FECACA;'
+                    f'border-radius:6px;padding:6px 10px;margin-top:6px;font-size:0.82rem;font-weight:600;">'
+                    f'{html.escape(alerta)}</div>'
+                )
+
+            cda_style = (
+                "background:#4C1D95;color:#EDE9FE;border:1px solid #8B5CF6;"
+                if kits_cda > 0
+                else "background:#1E293B;color:#94A3B8;border:1px solid #334155;"
+            )
+
+            cards_html.append(
+                f'<div style="background:#1E293B;border:1px solid #334155;border-radius:10px;'
+                f'padding:10px 13px;margin-bottom:10px;color:#F8FAFC;">'
+                f'  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">'
+                f'    <div style="font-size:0.95rem;font-weight:700;color:#F8FAFC;">'
+                f'      <span style="background:#38BDF8;color:#0F172A;padding:2px 7px;border-radius:5px;margin-right:6px;">#{ord_n}</span>'
+                f'      {recinto}'
+                f'    </div>'
+                f'    <div style="font-size:0.78rem;color:#CBD5E1;">'
+                f'      {canton} / {parr}{(" / " + zona) if zona else ""} · <strong>Camión {cam}</strong>{gt_txt} · {estado}'
+                f'    </div>'
+                f'  </div>'
+                f'  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:7px;align-items:center;">'
+                f'    <span style="background:#78350F;color:#FEF3C7;border:1px solid #F59E0B;padding:3px 10px;'
+                f'border-radius:6px;font-size:0.84rem;font-weight:700;">📦 Paquetes ({paq_n}): {cod_paq}</span>'
+                f'    <span style="{cda_style}padding:3px 10px;border-radius:6px;font-size:0.82rem;font-weight:600;">'
+                f'🧰 Kit CDA ({kits_cda}): {cod_cda}</span>'
+                f'    <span style="background:#0F172A;color:#CBD5E1;border:1px solid #334155;padding:3px 9px;'
+                f'border-radius:6px;font-size:0.78rem;">Biombos: <strong>{biombos}</strong> · MAP: <strong>{b_map}</strong> · '
+                f'Urnas B/C: <strong>{urnas_b}/{urnas_c}</strong></span>'
+                f'  </div>'
+                f'  {alerta_html}'
+                f'  {"".join(shelves_blocks)}'
+                f'</div>'
+            )
+
+        st.markdown("".join(cards_html), unsafe_allow_html=True)
 
 
 def _reset_ent_filtros():
@@ -238,9 +480,11 @@ def render(df_all: pd.DataFrame):
 
         render_alerta_reubicaciones(df_e)
 
+        # Contenedores superiores (se rellenan tras leer casillas marcadas en la tabla)
+        panel_resumen_e = st.container()
         barra_accion_e = st.container()
 
-        st.markdown("##### 📋 Selección individual por recinto")
+        st.markdown("##### 📋 Selección individual por recinto (marque las casillas y pulse el botón superior)")
         edit_cols = [
             "ORDEN", "ENTREGADO", "FECHA_HORA_ENTREGA", "OBS_ENTREGA",
             "DIA_ENTREGA", "HORA_STR", "FUERZA", "GT", "CAMION",
@@ -283,11 +527,21 @@ def render(df_all: pd.DataFrame):
 
         hay_filtro_e = len(df_e) < len(df_all)
 
+        # Resumen KPI + Guía Visual de Bodega (responde en vivo a casillas marcadas o filtro)
+        with panel_resumen_e:
+            if len(nuevos_ent) > 0:
+                ids_marcados = [x[0] for x in nuevos_ent]
+                df_pick_e = df_e[df_e["ORDEN"].isin(ids_marcados)]
+                _render_resumen_y_picking(df_pick_e, titulo_ctx="las casillas marcadas")
+            else:
+                _render_resumen_y_picking(df_e, titulo_ctx="la selección actual")
+
         with barra_accion_e:
             st.markdown("##### ⚡ Acción sobre selección actual")
             if len(nuevos_ent) > 0:
                 ids_marcados = [x[0] for x in nuevos_ent]
                 render_alerta_reubicaciones(df_e[df_e["ORDEN"].isin(ids_marcados)], solo_si_exacto=False)
+
             qa1, qa2, qa3 = st.columns([2, 1.5, 1.2])
             obs_lote = qa1.text_input(
                 "Observación de despacho (opcional)",
@@ -475,6 +729,7 @@ def render(df_all: pd.DataFrame):
 
         render_alerta_reubicaciones(df_r)
 
+        panel_resumen_r = st.container()
         barra_accion_r = st.container()
 
         st.markdown("##### 📋 Selección individual por recinto (Retorno a Bodega)")
@@ -517,6 +772,14 @@ def render(df_all: pd.DataFrame):
                 solo_obs_r.append((o_id, new_r, new_obs))
 
         hay_filtro_r = len(df_r) < len(df_entregados)
+
+        with panel_resumen_r:
+            if len(nuevos_rec) > 0:
+                ids_marcados_r = [x[0] for x in nuevos_rec]
+                df_pick_r = df_r[df_r["ORDEN"].isin(ids_marcados_r)]
+                _render_resumen_y_picking(df_pick_r, titulo_ctx="las casillas marcadas")
+            else:
+                _render_resumen_y_picking(df_r, titulo_ctx="la selección actual")
 
         with barra_accion_r:
             st.markdown("##### ⚡ Acción sobre selección actual")
