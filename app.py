@@ -34,7 +34,7 @@ col_b.markdown(
     f"""
     <div class="main-banner">
         <h2>📦 Control Logístico de Material Electoral — DINDES 2026</h2>
-        <p>{tot_recintos:,} Recintos · {tot_paquetes:,} Paquetes/Kits · {tot_cantones} Cantones · {tot_cda:,} Kits CDA &nbsp;|&nbsp; {storage_badge} &nbsp;|&nbsp; 🕒 {hora_actual_ec}</p>
+        <p>{tot_recintos:,} Recintos · {tot_paquetes:,} Paquetes/Kits · {tot_cantones} Cantones · {tot_cda:,} Kits CDA &nbsp;|🕒 {hora_actual_ec}</p>
     </div>
     """,
     unsafe_allow_html=True,
