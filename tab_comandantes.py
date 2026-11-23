@@ -1,6 +1,22 @@
+import re
+import unicodedata
 import pandas as pd
 import streamlit as st
 from utils import sort_camiones, to_excel_bytes
+
+
+def _norm_text(s: str) -> str:
+    s = str(s).upper().strip()
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
+def _match_cod_paquete(cod_str: str, q_num: int) -> bool:
+    nums = [int(x) for x in re.findall(r"\d+", str(cod_str))]
+    if len(nums) >= 2:
+        return nums[0] <= q_num <= nums[-1]
+    if len(nums) == 1:
+        return nums[0] == q_num
+    return False
 
 
 def _reset_filtros():
@@ -15,7 +31,6 @@ def _reset_filtros():
 
 
 def _on_fuerza_change():
-    # Al cambiar de Fuerza, limpiar subfiltros previos para evitar filtros residuales
     st.session_state["q_gt"] = "TODOS"
     st.session_state["q_cam"] = "TODOS"
     st.session_state["q_can"] = "TODOS"
@@ -79,18 +94,25 @@ def render(df_all: pd.DataFrame):
         df_f = df_f[df_f["PARROQUIA"] == sel_par]
 
     busq = c7.text_input(
-        "Buscar Recinto / Zona / Código Paquete",
-        placeholder="Ej: MILAGRO, ROCAFUERTE, KIT-0085...",
+        "Buscar Cantón / Parroquia / Recinto / Zona / Código Paquete",
+        placeholder="Ej: EL EMPALME, MILAGRO, 900015, KIT-0085...",
         key="q_busq",
     )
     if busq.strip():
-        q = busq.strip().upper()
+        q_raw = busq.strip()
+        q = _norm_text(q_raw)
         mask_q = (
-            df_f["RECINTO"].str.upper().str.contains(q, na=False)
-            | df_f["ZONA"].str.upper().str.contains(q, na=False)
-            | df_f["CODIGO PAQUETES"].str.upper().str.contains(q, na=False)
-            | df_f["CODIGO KIT CDA"].str.upper().str.contains(q, na=False)
+            df_f["CANTON"].apply(_norm_text).str.contains(q, na=False, regex=False)
+            | df_f["PARROQUIA"].apply(_norm_text).str.contains(q, na=False, regex=False)
+            | df_f["ZONA"].apply(_norm_text).str.contains(q, na=False, regex=False)
+            | df_f["RECINTO"].apply(_norm_text).str.contains(q, na=False, regex=False)
+            | df_f["CODIGO PAQUETES"].apply(_norm_text).str.contains(q, na=False, regex=False)
+            | df_f["CODIGO KIT CDA"].apply(_norm_text).str.contains(q, na=False, regex=False)
         )
+        # Si escribe un código numérico exacto de paquete (ej: 907257), buscar también dentro del rango "907255 al 907265"
+        if q_raw.isdigit():
+            q_num = int(q_raw)
+            mask_q = mask_q | df_f["CODIGO PAQUETES"].apply(lambda x: _match_cod_paquete(x, q_num))
         df_f = df_f[mask_q]
 
     solo_cda = c8.checkbox("Solo CDA", key="q_cda")
@@ -117,7 +139,6 @@ def render(df_all: pd.DataFrame):
         unsafe_allow_html=True,
     )
 
-    # Resumen explícito de Cantones, Camiones y Recintos del filtro activo
     cantones_list = list(dict.fromkeys([x for x in df_f["CANTON"].tolist() if x]))
     camiones_list = sort_camiones([x for x in df_f["CAMION"].unique().tolist() if x and x != "Sin asignar"])
     if "Sin asignar" in df_f["CAMION"].unique().tolist():
@@ -202,14 +223,32 @@ def render(df_all: pd.DataFrame):
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
     else:
+        # Prioridad visual: RECINTO y CODIGO PAQUETES al frente de la tabla
         cols_show = [
-            "ORDEN", "ESTADO", "FECHA_STR", "HORA_STR", "BLOQUE", "FUERZA", "GT", "CAMION",
-            "CANTON", "PARROQUIA", "ZONA", "RECINTO", "NUMERO DE PAQUETES",
-            "CDA", "KITS CDA", "CODIGO KIT CDA", "BIOMBOS",
-            "BIOMBO MAP", "URNAS BLANCAS", "URNAS CAFÉS", "CODIGO PAQUETES",
+            "ORDEN", "RECINTO", "CODIGO PAQUETES", "NUMERO DE PAQUETES",
+            "FECHA_STR", "HORA_STR", "CANTON", "PARROQUIA", "ZONA",
+            "FUERZA", "GT", "CAMION", "ESTADO",
+            "CDA", "KITS CDA", "CODIGO KIT CDA",
+            "BIOMBOS", "BIOMBO MAP", "URNAS BLANCAS", "URNAS CAFÉS", "BLOQUE",
         ]
-        df_show = df_f[cols_show].rename(columns={"FECHA_STR": "FECHA RETIRO", "HORA_STR": "HORA RETIRO"})
-        st.dataframe(df_show, use_container_width=True, hide_index=True, height=480)
+        df_show = df_f[cols_show].rename(
+            columns={
+                "FECHA_STR": "FECHA RETIRO",
+                "HORA_STR": "HORA RETIRO",
+                "CODIGO PAQUETES": "CÓDIGO PAQUETE ELECTORAL",
+                "NUMERO DE PAQUETES": "PAQUETES",
+            }
+        )
+        st.dataframe(
+            df_show,
+            use_container_width=True,
+            hide_index=True,
+            height=480,
+            column_config={
+                "RECINTO": st.column_config.TextColumn("RECINTO", width="large"),
+                "CÓDIGO PAQUETE ELECTORAL": st.column_config.TextColumn("CÓDIGO PAQUETE ELECTORAL", width="medium"),
+            },
+        )
         st.download_button(
             "⬇️ Descargar Detalle Filtrado (Excel)",
             data=to_excel_bytes(df_show, "Detalle_Recintos"),
