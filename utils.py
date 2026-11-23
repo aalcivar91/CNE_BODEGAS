@@ -15,7 +15,7 @@ BUFFER_MIN_BY_BLOCK = {
     "Bloque 0 - Puná": 56.7,
     "Bloque 1 - Ejército": 15.465,
     "Bloque 2 - FAE": 63.6,
-    "Bloque 3 - Armada": 2.269,
+    "Bloque 3 - Armada": 2.243,
 }
 
 def get_secret(key: str, default: str = "") -> str:
