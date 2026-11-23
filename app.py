@@ -2,7 +2,7 @@ import os
 import streamlit as st
 
 st.set_page_config(
-    page_title="Control Logístico Electoral — DINDES 2026",
+    page_title="DINDES — Control Logístico Electoral",
     page_icon="📦",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -25,7 +25,7 @@ col_b, col_r = st.columns([6, 1])
 col_b.markdown(
     f"""
     <div class="main-banner">
-        <h2>📦 Control Logístico de Material Electoral — DINDES 2026</h2>
+        <h2>📦 Control Logístico de Material Electoral — DINDES</h2>
         <p>584 Recintos · 9,466 Paquetes/Kits · 25 Cantones · 499 Kits CDA &nbsp;|&nbsp;</p>
     </div>
     """,
