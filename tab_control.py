@@ -285,6 +285,9 @@ def render(df_all: pd.DataFrame):
 
         with barra_accion_e:
             st.markdown("##### ⚡ Acción sobre selección actual")
+            if len(nuevos_ent) > 0:
+                ids_marcados = [x[0] for x in nuevos_ent]
+                render_alerta_reubicaciones(df_e[df_e["ORDEN"].isin(ids_marcados)], solo_si_exacto=False)
             qa1, qa2, qa3 = st.columns([2, 1.5, 1.2])
             obs_lote = qa1.text_input(
                 "Observación de despacho (opcional)",
