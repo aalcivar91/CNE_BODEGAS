@@ -121,17 +121,20 @@ def render(df_all: pd.DataFrame):
             key="e_busq_recinto",
         )
         if e_busq.strip():
-            q = e_busq.strip().upper()
-            df_e = df_e[
-                df_e["RECINTO"].str.upper().str.contains(q, na=False)
-                | df_e["ZONA"].str.upper().str.contains(q, na=False)
-                | df_e["CANTON"].str.upper().str.contains(q, na=False)
-                | df_e["CODIGO PAQUETES"].str.upper().str.contains(q, na=False)
-            ]
-
-        st.markdown("##### ⚡ Acción rápida sobre el filtro actual")
-        qa1, qa2, qa3 = st.columns([2, 1.3, 1.3])
-        obs_lote = qa1.text_input("Observación de despacho", placeholder="Ej: Acta firmada sin novedad", key="obs_ent_lote")
+            q_raw = e_busq.strip()
+            q = _norm_text(q_raw)
+            mask_e = (
+                df_e["RECINTO"].apply(_norm_text).str.contains(q, na=False, regex=False)
+                | df_e["ZONA"].apply(_norm_text).str.contains(q, na=False, regex=False)
+                | df_e["CANTON"].apply(_norm_text).str.contains(q, na=False, regex=False)
+                | df_e["PARROQUIA"].apply(_norm_text).str.contains(q, na=False, regex=False)
+                | df_e["CODIGO PAQUETES"].apply(_norm_text).str.contains(q, na=False, regex=False)
+                | df_e["CODIGO KIT CDA"].apply(_norm_text).str.contains(q, na=False, regex=False)
+            )
+            if q_raw.isdigit():
+                q_num = int(q_raw)
+                mask_e = mask_e | df_e["CODIGO PAQUETES"].apply(lambda x: _match_cod_paquete(x, q_num))
+            df_e = df_e[mask_e]
 
         if qa2.button(
             f"✅ Marcar {len(df_e)} recinto(s) como ENTREGADO",
