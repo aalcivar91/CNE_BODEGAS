@@ -32,7 +32,7 @@ def _on_r_fz_change():
 
 
 def render(df_all: pd.DataFrame):
-    st.subheader("Control Operativo de Bodega — Despacho y Retorno")
+    st.subheader("Control Operativo de Bodega CNE — Despacho y Retorno")
 
     if "auth_ok" not in st.session_state:
         st.session_state["auth_ok"] = False
@@ -63,8 +63,8 @@ def render(df_all: pd.DataFrame):
     modo_ctrl = st.radio(
         "Etapa operativa:",
         [
-            "🚚 Despacho desde Bodega (Viernes / Sábado)",
-            "📦 Recibido en Bodega — Post-Elecciones (Domingo)",
+            "🚚 Despacho desde Bodega a Jefes De Recinto",
+            "📦 Recibido en Bodega — Post-Elecciones",
         ],
         horizontal=True,
         key="ctrl_modo",
@@ -116,7 +116,7 @@ def render(df_all: pd.DataFrame):
 
         st.markdown("##### ⚡ Acción rápida sobre el filtro actual")
         qa1, qa2, qa3 = st.columns([2, 1.3, 1.3])
-        obs_lote = qa1.text_input("Observación de despacho (opcional)", placeholder="Ej: Acta firmada sin novedad", key="obs_ent_lote")
+        obs_lote = qa1.text_input("Observación de despacho", placeholder="Ej: Acta firmada sin novedad", key="obs_ent_lote")
 
         if qa2.button(
             f"✅ Marcar {len(df_e)} recinto(s) como ENTREGADO",
@@ -164,7 +164,7 @@ def render(df_all: pd.DataFrame):
             st.warning(f"Se revirtieron {len(recs)} recintos a PENDIENTE.")
             st.rerun()
 
-        st.markdown("##### 📋 Edición individual por recinto (Despacho)")
+        st.markdown("##### 📋 Edición individual por recinto")
         edit_cols = [
             "ORDEN", "ENTREGADO", "FECHA_HORA_ENTREGA", "OBS_ENTREGA",
             "DIA_ENTREGA", "HORA_STR", "FUERZA", "GT", "CAMION",
@@ -220,7 +220,7 @@ def render(df_all: pd.DataFrame):
         if len(df_entregados) == 0:
             st.warning(
                 "🔒 Todavía no hay recintos marcados como **ENTREGADO**. "
-                "La recepción en bodega (domingo post-elecciones) se habilita automáticamente únicamente para los recintos que ya fueron entregados."
+                "La recepción en bodega (post-elecciones) se habilita automáticamente únicamente para los recintos que ya fueron entregados."
             )
             return
 
@@ -273,7 +273,7 @@ def render(df_all: pd.DataFrame):
 
         ra1, ra2, ra3 = st.columns([2, 1.4, 1.2])
         obs_rec_lote = ra1.text_input(
-            "Novedad / Observación de retorno (opcional)",
+            "Novedad / Observación de retorno",
             placeholder="Ej: Retorno completo con actas y urnas",
             key="obs_rec_lote",
         )
