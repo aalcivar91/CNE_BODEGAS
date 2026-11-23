@@ -44,7 +44,7 @@ def _on_canton_change():
 
 def render(df_all: pd.DataFrame):
     col_t, col_btn = st.columns([5, 1.3])
-    col_t.subheader("Consulta de Fecha y Horario de Recolección (Tiempo Real)")
+    col_t.subheader("Consulta de Fecha y Horario de Recolección")
     with col_btn:
         st.write("")
         st.button("🧹 Limpiar búsqueda", use_container_width=True, on_click=_reset_filtros)
