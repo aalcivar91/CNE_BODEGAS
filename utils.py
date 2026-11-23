@@ -1,22 +1,27 @@
 import io
 import os
 import sqlite3
-from datetime import datetime
-from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
 
 TZ_EC = ZoneInfo("America/Guayaquil")
-EXCEL_PATH = "Plan_Entrega_Material_Electoral_Ordenado-v24.xlsx"
+EXCEL_PATH = "Plan_Entrega_Material_Electoral_Ordenado-v25.xlsx"
 SQLITE_PATH = "estado_despacho_guayas.db"
+
+# Tasa operativa calibrada: 400 paquetes / hora (6.6667 paq/min)
+RATE_PAQ_PER_MIN = 400.0 / 60.0
+
+# Margen operativo por camión usado en el plan v25 (FINEX Vie 16:00 / Sáb 22:00)
 BUFFER_MIN_BY_BLOCK = {
     "Bloque 0 - Puná": 55.05,
     "Bloque 1 - Ejército": 8.85,
     "Bloque 2 - FAE": 35.40,
     "Bloque 3 - Armada": 1.66,
 }
+
 
 def get_secret(key: str, default: str = "") -> str:
     try:
@@ -52,8 +57,20 @@ def inject_css():
             border-radius: 8px;
             margin-bottom: 0.75rem;
             font-weight: 500;
+            line-height: 1.55;
         }
         .franja-box strong { color: #1B365D !important; }
+        .franja-delay {
+            background: #FEF3C7;
+            color: #78350F !important;
+            border-left: 5px solid #D97706;
+            padding: 0.85rem 1.1rem;
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            font-weight: 500;
+            line-height: 1.55;
+        }
+        .franja-delay strong { color: #92400E !important; }
         .resumen-filtro-box {
             background: #1E293B;
             color: #F8FAFC !important;
@@ -82,6 +99,35 @@ def inject_css():
     )
 
 
+def _fmt_alerta_reub(val: str) -> str:
+    v = str(val).strip()
+    if not v or v.lower() == "nan":
+        return ""
+    if v.upper().startswith("REUBICACI"):
+        return f"⚠️ {v}"
+    return f"⚠️ Reubicación por mal estado de recinto, usted debe ir a {v}"
+
+
+def render_alerta_reubicaciones(df_vista: pd.DataFrame):
+    if "ALERTA_REUBICACION" not in df_vista.columns:
+        return
+    df_al = df_vista[df_vista["ALERTA_REUBICACION"] != ""]
+    if len(df_al) == 0:
+        return
+    lineas = []
+    for _, r in df_al.iterrows():
+        kit_txt = f" · `{r['CODIGO KIT CDA']}`" if str(r.get("CODIGO KIT CDA", "")).strip() else ""
+        lineas.append(
+            f"- **Orden {int(r['ORDEN'])} — {r['RECINTO']}** ({r['CANTON']} | Paquetes `{r['CODIGO PAQUETES']}`{kit_txt}): "
+            f"**{r['ALERTA_REUBICACION']}**"
+        )
+    st.error(
+        "🌧️ **ALERTA DE REUBICACIÓN DE RECINTO:** "
+        "Se retiran los **mismos paquetes y kits asignados**, pero el material debe trasladarse al nuevo recinto indicado:\n\n"
+        + "\n".join(lineas)
+    )
+
+
 @st.cache_data(show_spinner=False)
 def load_base_data(path: str = EXCEL_PATH) -> pd.DataFrame:
     df = pd.read_excel(path, sheet_name="Base de Datos")
@@ -96,10 +142,13 @@ def load_base_data(path: str = EXCEL_PATH) -> pd.DataFrame:
     df["URNAS BLANCAS"] = df["NUMERO DE PAQUETES"]
     df["URNAS CAFÉS"] = df["NUMERO DE PAQUETES"]
 
+    if "REUBICACION" not in df.columns:
+        df["REUBICACION"] = ""
+
     for col in [
         "BLOQUE", "HORA BLOQUE", "CANTON", "PARROQUIA", "ZONA", "RECINTO",
         "CDA", "CODIGO KIT CDA", "CODIGO PAQUETES", "PERCHA",
-        "NIVEL (POR PERCHA)", "FUERZA", "GT", "RESPONSABLE"
+        "NIVEL (POR PERCHA)", "FUERZA", "GT", "RESPONSABLE", "REUBICACION"
     ]:
         df[col] = df[col].fillna("").astype(str).str.strip()
 
@@ -126,6 +175,7 @@ def load_base_data(path: str = EXCEL_PATH) -> pd.DataFrame:
         return str(v).strip()[:5]
 
     df["HORA_STR"] = df["HORA DE RETIRO"].apply(fmt_hora)
+    df["ALERTA_REUBICACION"] = df["REUBICACION"].apply(_fmt_alerta_reub)
     return df
 
 
@@ -226,7 +276,12 @@ def upsert_status_records(records: list[dict]):
         conn.close()
     load_status_df.clear()
 
+
 def apply_dynamic_eta(df_in: pd.DataFrame, now_dt: datetime | None = None) -> pd.DataFrame:
+    """
+    Recalcula en tiempo real HORA_ESTIMADA, DESFASE_MIN y ESTADO_HORARIO
+    a tasa de 400 paquetes/hora, propagando demoras reales y del reloj actual.
+    """
     if now_dt is None:
         now_dt = datetime.now(TZ_EC)
 
@@ -257,7 +312,8 @@ def apply_dynamic_eta(df_in: pd.DataFrame, now_dt: datetime | None = None) -> pd
                 s_i = pos
         groups.append((cur_k, idxs[s_i:]))
 
-        plan_starts, plan_ends = [], []
+        plan_starts = []
+        plan_ends = []
         for (blk, fz, gt, cam), g_idxs in groups:
             h_s = df_out.loc[g_idxs[0], "HORA_STR"]
             try:
@@ -266,7 +322,7 @@ def apply_dynamic_eta(df_in: pd.DataFrame, now_dt: datetime | None = None) -> pd
                 hh, mm = 0, 0
             t_start = datetime(day_val.year, day_val.month, day_val.day, hh, mm, tzinfo=TZ_EC)
             paq = int(df_out.loc[g_idxs, "NUMERO DE PAQUETES"].sum())
-            dur = (paq / (400.0 / 60.0)) + BUFFER_MIN_BY_BLOCK.get(blk, 5.0)
+            dur = (paq / RATE_PAQ_PER_MIN) + BUFFER_MIN_BY_BLOCK.get(blk, 5.0)
             plan_starts.append(t_start)
             plan_ends.append(t_start + timedelta(minutes=dur))
 
@@ -298,17 +354,20 @@ def apply_dynamic_eta(df_in: pd.DataFrame, now_dt: datetime | None = None) -> pd
                     df_out.loc[g_idxs, "HORA_ESTIMADA"] = t_real_end.strftime("%H:%M")
                 else:
                     df_out.loc[g_idxs, "HORA_ESTIMADA"] = df_out.loc[g_idxs, "HORA_STR"]
+
                 df_out.loc[g_idxs, "DESFASE_MIN"] = 0
                 df_out.loc[g_idxs, "ESTADO_HORARIO"] = "✅ Entregado"
             else:
                 t_est_start = t_prog_start + timedelta(minutes=current_delay)
                 t_est_end = t_prog_end + timedelta(minutes=current_delay)
+
                 df_out.loc[g_idxs, "HORA_ESTIMADA"] = t_est_start.strftime("%H:%M")
                 df_out.loc[g_idxs, "DESFASE_MIN"] = current_delay
 
                 if is_same_day and now_dt > t_est_end:
                     over_min = int(round((now_dt - t_est_end).total_seconds() / 60.0))
-                    df_out.loc[g_idxs, "ESTADO_HORARIO"] = f"🔴 En curso / Demora +{current_delay + over_min} min"
+                    total_over = current_delay + over_min
+                    df_out.loc[g_idxs, "ESTADO_HORARIO"] = f"🔴 En curso / Demora +{total_over} min"
                     current_delay += over_min
                 elif current_delay > 0:
                     df_out.loc[g_idxs, "ESTADO_HORARIO"] = f"🟡 Reprogramado +{current_delay} min"
@@ -317,7 +376,8 @@ def apply_dynamic_eta(df_in: pd.DataFrame, now_dt: datetime | None = None) -> pd
 
     return df_out
 
-def get_merged_df() -> pd.DataFrame:
+
+def get_merged_df(now_dt: datetime | None = None) -> pd.DataFrame:
     base = load_base_data(EXCEL_PATH).copy()
     st_df = load_status_df()
     if len(st_df) == 0:
@@ -360,7 +420,7 @@ def get_merged_df() -> pd.DataFrame:
         return "⏳ Pendiente"
 
     base["ESTADO"] = base.apply(estado_lbl, axis=1)
-    base = apply_dynamic_eta(base)
+    base = apply_dynamic_eta(base, now_dt=now_dt)
     return base
 
 
@@ -372,7 +432,9 @@ def to_excel_bytes(df_export: pd.DataFrame, sheet_name: str = "Reporte") -> byte
 
 
 def now_ec_str() -> str:
-    return datetime.now(TZ_EC).strftime("%d/%m/%Y %H:%M")
+    sim_dt = st.session_state.get("sim_now_dt")
+    dt = sim_dt if sim_dt is not None else datetime.now(TZ_EC)
+    return dt.strftime("%d/%m/%Y %H:%M")
 
 
 def sort_camiones(cam_list):
