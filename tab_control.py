@@ -4,6 +4,8 @@ import pandas as pd
 import streamlit as st
 from utils import ADMIN_PASSWORD, now_ec_str, sort_camiones, upsert_status_records
 
+OPERADOR_DEFAULT = "Bodega CNE 2026 _ CONTROL DINDES"
+
 
 def _norm_text(s: str) -> str:
     s = str(s).upper().strip()
@@ -64,6 +66,9 @@ def _reset_ent_filtros():
     st.session_state["e_gt"] = "TODOS"
     st.session_state["e_cam"] = "TODOS"
     st.session_state["e_est"] = "TODOS"
+    st.session_state["e_can"] = "TODOS"
+    st.session_state["e_par"] = "TODAS"
+    st.session_state["e_zon"] = "TODAS"
     st.session_state["e_busq_recinto"] = ""
     st.session_state["e_ordenes_sel"] = ""
 
@@ -71,8 +76,20 @@ def _reset_ent_filtros():
 def _on_e_fz_change():
     st.session_state["e_gt"] = "TODOS"
     st.session_state["e_cam"] = "TODOS"
+    st.session_state["e_can"] = "TODOS"
+    st.session_state["e_par"] = "TODAS"
+    st.session_state["e_zon"] = "TODAS"
     st.session_state["e_busq_recinto"] = ""
     st.session_state["e_ordenes_sel"] = ""
+
+
+def _on_e_can_change():
+    st.session_state["e_par"] = "TODAS"
+    st.session_state["e_zon"] = "TODAS"
+
+
+def _on_e_par_change():
+    st.session_state["e_zon"] = "TODAS"
 
 
 def _reset_rec_filtros():
@@ -80,6 +97,9 @@ def _reset_rec_filtros():
     st.session_state["r_gt"] = "TODOS"
     st.session_state["r_cam"] = "TODOS"
     st.session_state["r_est"] = "TODOS"
+    st.session_state["r_can"] = "TODOS"
+    st.session_state["r_par"] = "TODAS"
+    st.session_state["r_zon"] = "TODAS"
     st.session_state["r_busq_recinto"] = ""
     st.session_state["r_ordenes_sel"] = ""
 
@@ -87,17 +107,28 @@ def _reset_rec_filtros():
 def _on_r_fz_change():
     st.session_state["r_gt"] = "TODOS"
     st.session_state["r_cam"] = "TODOS"
+    st.session_state["r_can"] = "TODOS"
+    st.session_state["r_par"] = "TODAS"
+    st.session_state["r_zon"] = "TODAS"
     st.session_state["r_busq_recinto"] = ""
     st.session_state["r_ordenes_sel"] = ""
 
 
-def render(df_all: pd.DataFrame):
-    st.subheader("Control Operativo de Bodega — Despacho y Retorno")
+def _on_r_can_change():
+    st.session_state["r_par"] = "TODAS"
+    st.session_state["r_zon"] = "TODAS"
 
+
+def _on_r_par_change():
+    st.session_state["r_zon"] = "TODAS"
+
+
+def render(df_all: pd.DataFrame):
     if "auth_ok" not in st.session_state:
         st.session_state["auth_ok"] = False
 
     if not st.session_state["auth_ok"]:
+        st.subheader("Control Operativo de Bodega — Despacho y Retorno")
         st.info("🔒 Esta sección está restringida al personal de control de bodega. Ingrese la clave para registrar entregas y recepciones.")
         col_pw, col_btn = st.columns([2, 1])
         pwd_in = col_pw.text_input("Clave de acceso", type="password", key="pwd_input")
@@ -109,16 +140,15 @@ def render(df_all: pd.DataFrame):
                 st.error("Clave incorrecta.")
         return
 
-    top_a, top_b = st.columns([4, 1])
-    operador = top_a.text_input(
-        "Nombre / Grado del operador que registra",
-        value=st.session_state.get("operador"),
-        key="op_name",
-    )
-    st.session_state["operador"] = operador
-    if top_b.button("🔒 Cerrar sesión", use_container_width=True):
-        st.session_state["auth_ok"] = False
-        st.rerun()
+    top_a, top_b = st.columns([5, 1.2])
+    top_a.subheader("Control Operativo de Bodega — Despacho y Retorno")
+    with top_b:
+        st.write("")
+        if st.button("🔒 Cerrar sesión", use_container_width=True):
+            st.session_state["auth_ok"] = False
+            st.rerun()
+
+    operador = OPERADOR_DEFAULT
 
     modo_ctrl = st.radio(
         "Etapa operativa:",
@@ -163,6 +193,29 @@ def render(df_all: pd.DataFrame):
             st.write("")
             st.button("🧹 Limpiar", use_container_width=True, key="btn_limpiar_e", on_click=_reset_ent_filtros)
 
+        # Fila 2 de filtros: Cantón, Parroquia y Zona
+        fg1, fg2, fg3 = st.columns(3)
+        e_can_opts = ["TODOS"] + sorted([x for x in df_e["CANTON"].unique().tolist() if x])
+        if st.session_state.get("e_can", "TODOS") not in e_can_opts:
+            st.session_state["e_can"] = "TODOS"
+        e_can = fg1.selectbox("Cantón", e_can_opts, key="e_can", on_change=_on_e_can_change)
+        if e_can != "TODOS":
+            df_e = df_e[df_e["CANTON"] == e_can]
+
+        e_par_opts = ["TODAS"] + sorted([x for x in df_e["PARROQUIA"].unique().tolist() if x])
+        if st.session_state.get("e_par", "TODAS") not in e_par_opts:
+            st.session_state["e_par"] = "TODAS"
+        e_par = fg2.selectbox("Parroquia", e_par_opts, key="e_par", on_change=_on_e_par_change)
+        if e_par != "TODAS":
+            df_e = df_e[df_e["PARROQUIA"] == e_par]
+
+        e_zon_opts = ["TODAS"] + sorted([x for x in df_e["ZONA"].unique().tolist() if x])
+        if st.session_state.get("e_zon", "TODAS") not in e_zon_opts:
+            st.session_state["e_zon"] = "TODAS"
+        e_zon = fg3.selectbox("Zona", e_zon_opts, key="e_zon")
+        if e_zon != "TODAS":
+            df_e = df_e[df_e["ZONA"] == e_zon]
+
         b1, b2 = st.columns([2, 1.2])
         e_busq = b1.text_input(
             "🔎 Buscar por nombre de Recinto, Zona, Parroquia o Código de Paquete",
@@ -177,14 +230,13 @@ def render(df_all: pd.DataFrame):
         df_e = _filtrar_busqueda(df_e, e_busq)
         df_e = _filtrar_por_ordenes(df_e, e_ordenes)
 
-        # Contenedor visual arriba de la tabla, pero rellenado DESPUÉS de leer las casillas marcadas
         barra_accion_e = st.container()
 
         st.markdown("##### 📋 Selección individual por recinto (marque las casillas y pulse el botón superior)")
         edit_cols = [
             "ORDEN", "ENTREGADO", "FECHA_HORA_ENTREGA", "OBS_ENTREGA",
             "DIA_ENTREGA", "HORA_STR", "FUERZA", "GT", "CAMION",
-            "CANTON", "ZONA", "RECINTO", "NUMERO DE PAQUETES",
+            "CANTON", "PARROQUIA", "ZONA", "RECINTO", "NUMERO DE PAQUETES",
             "CODIGO PAQUETES", "CODIGO KIT CDA", "PERCHA", "NIVEL (POR PERCHA)",
         ]
         edited_ent = st.data_editor(
@@ -202,7 +254,6 @@ def render(df_all: pd.DataFrame):
             key="editor_entregas",
         )
 
-        # Detectar qué recintos marcó o desmarcó el operador en la tabla
         orig_map = df_e.set_index("ORDEN").to_dict("index")
         nuevos_ent = []
         nuevos_pend = []
@@ -227,12 +278,11 @@ def render(df_all: pd.DataFrame):
             st.markdown("##### ⚡ Acción sobre selección actual")
             qa1, qa2, qa3 = st.columns([2, 1.5, 1.2])
             obs_lote = qa1.text_input(
-                "Observación de despacho (opcional)",
+                "Observación de despacho",
                 placeholder="Ej: Acta firmada sin novedad",
                 key="obs_ent_lote",
             )
 
-            # Botón rojo: prioriza SIEMPRE las casillas que marcaste (ej: 3 y 8)
             if len(nuevos_ent) > 0:
                 ords_txt = ", ".join(str(x[0]) for x in nuevos_ent[:8]) + ("..." if len(nuevos_ent) > 8 else "")
                 btn_lbl = f"✅ Marcar {len(nuevos_ent)} seleccionado(s) como ENTREGADO (Orden: {ords_txt})"
@@ -282,7 +332,6 @@ def render(df_all: pd.DataFrame):
                             }
                         )
                 else:
-                    # Sin casillas individuales marcadas, pero con filtro activo -> aplicar al filtro
                     for _, r in df_e.iterrows():
                         recs.append(
                             {
@@ -301,7 +350,6 @@ def render(df_all: pd.DataFrame):
                 st.success(f"Registrados {len(recs)} recinto(s) como ENTREGADO ({ts}).")
                 st.rerun()
 
-            # Botón revertir: prioriza las casillas desmarcadas o el filtro activo
             if len(nuevos_pend) > 0:
                 rev_lbl = f"↩️ Revertir {len(nuevos_pend)} desmarcado(s) a PENDIENTE"
                 rev_disabled = False
@@ -377,6 +425,29 @@ def render(df_all: pd.DataFrame):
             st.write("")
             st.button("🧹 Limpiar", use_container_width=True, key="btn_limpiar_r", on_click=_reset_rec_filtros)
 
+        # Fila 2 de filtros: Cantón, Parroquia y Zona
+        rg1, rg2, rg3 = st.columns(3)
+        r_can_opts = ["TODOS"] + sorted([x for x in df_r["CANTON"].unique().tolist() if x])
+        if st.session_state.get("r_can", "TODOS") not in r_can_opts:
+            st.session_state["r_can"] = "TODOS"
+        r_can = rg1.selectbox("Cantón", r_can_opts, key="r_can", on_change=_on_r_can_change)
+        if r_can != "TODOS":
+            df_r = df_r[df_r["CANTON"] == r_can]
+
+        r_par_opts = ["TODAS"] + sorted([x for x in df_r["PARROQUIA"].unique().tolist() if x])
+        if st.session_state.get("r_par", "TODAS") not in r_par_opts:
+            st.session_state["r_par"] = "TODAS"
+        r_par = rg2.selectbox("Parroquia", r_par_opts, key="r_par", on_change=_on_r_par_change)
+        if r_par != "TODAS":
+            df_r = df_r[df_r["PARROQUIA"] == r_par]
+
+        r_zon_opts = ["TODAS"] + sorted([x for x in df_r["ZONA"].unique().tolist() if x])
+        if st.session_state.get("r_zon", "TODAS") not in r_zon_opts:
+            st.session_state["r_zon"] = "TODAS"
+        r_zon = rg3.selectbox("Zona", r_zon_opts, key="r_zon")
+        if r_zon != "TODAS":
+            df_r = df_r[df_r["ZONA"] == r_zon]
+
         rb1, rb2 = st.columns([2, 1.2])
         r_busq = rb1.text_input(
             "🔎 Buscar por nombre de Recinto, Zona, Parroquia o Código de Paquete",
@@ -397,7 +468,7 @@ def render(df_all: pd.DataFrame):
         rec_cols = [
             "ORDEN", "RECIBIDO_BODEGA", "FECHA Y HORA DE FINALIZACION", "OBS_RECEPCION",
             "FECHA_HORA_ENTREGA", "FUERZA", "GT", "CAMION",
-            "CANTON", "ZONA", "RECINTO", "NUMERO DE PAQUETES",
+            "CANTON", "PARROQUIA", "ZONA", "RECINTO", "NUMERO DE PAQUETES",
             "CODIGO PAQUETES", "CODIGO KIT CDA", "PERCHA", "NIVEL (POR PERCHA)",
         ]
         edited_rec = st.data_editor(
