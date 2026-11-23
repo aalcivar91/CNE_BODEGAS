@@ -20,7 +20,12 @@ inject_css()
 if not os.path.exists(EXCEL_PATH):
     st.error(f"No se encontró el archivo base `{EXCEL_PATH}` en la carpeta del aplicativo.")
     st.stop()
-
+    
+df_base = load_base_data(EXCEL_PATH, os.path.getmtime(EXCEL_PATH))
+tot_recintos = len(df_base)
+tot_paquetes = int(df_base["NUMERO DE PAQUETES"].sum())
+tot_cantones = int(df_base["CANTON"].nunique())
+tot_cda = int(df_base["KITS CDA"].sum())
 storage_badge = "☁️ Supabase (Tiempo Real)" if USE_SUPABASE else "💾 SQLite Local"
 hora_actual_ec = datetime.now(TZ_EC).strftime("%d/%m/%Y %H:%M")
 
@@ -29,7 +34,7 @@ col_b.markdown(
     f"""
     <div class="main-banner">
         <h2>📦 Control Logístico de Material Electoral — DINDES 2026</h2>
-        <p>584 Recintos · 9,466 Paquetes/Kits · 25 Cantones · 499 Kits CDA &nbsp;|🕒 {hora_actual_ec}</p>
+        <p>{tot_recintos:,} Recintos · {tot_paquetes:,} Paquetes/Kits · {tot_cantones} Cantones · {tot_cda:,} Kits CDA &nbsp;|&nbsp; {storage_badge} &nbsp;|&nbsp; 🕒 {hora_actual_ec}</p>
     </div>
     """,
     unsafe_allow_html=True,
