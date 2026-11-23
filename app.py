@@ -44,7 +44,7 @@ pestana = st.radio(
     [
         "📅 1. Información de Horarios y Material a Retirar",
         "🔐 2. Control Entregas y Retorno Bodega",
-        "📊 3. Control de Avances de Entrega y Recepción,
+        "📊 3. Control de Avances de Entrega y Recepción",
     ],
     horizontal=True,
     label_visibility="collapsed",
