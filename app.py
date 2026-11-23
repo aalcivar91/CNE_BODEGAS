@@ -28,7 +28,7 @@ col_b.markdown(
     f"""
     <div class="main-banner">
         <h2>📦 Control Logístico de Material Electoral — DINDES 2026</h2>
-        <p>584 Recintos · 9,466 Paquetes/Kits · 25 Cantones · 499 Kits CDA &nbsp;|&nbsp; {storage_badge} &nbsp;|&nbsp; 🕒 {hora_actual_ec}</p>
+        <p>584 Recintos · 9,466 Paquetes/Kits · 25 Cantones · 499 Kits CDA &nbsp;|🕒 {hora_actual_ec}</p>
     </div>
     """,
     unsafe_allow_html=True,
