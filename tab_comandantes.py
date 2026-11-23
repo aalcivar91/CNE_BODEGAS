@@ -251,12 +251,13 @@ def render(df_all: pd.DataFrame):
         )
     else:
         cols_show = [
-            "ORDEN", "RECINTO", "ALERTA_REUBICACION", "CODIGO PAQUETES", "NUMERO DE PAQUETES",
-            "HORA_STR", "HORA_ESTIMADA", "ESTADO_HORARIO",
-            "FECHA_STR", "CANTON", "PARROQUIA", "ZONA",
+            "ORDEN", "RECINTO", "FECHA_STR", "HORA_STR", "HORA_ESTIMADA", "ESTADO_HORARIO",
+            "CODIGO PAQUETES", "NUMERO DE PAQUETES",
+            "CANTON", "PARROQUIA", "ZONA",
             "FUERZA", "GT", "CAMION", "ESTADO",
             "CDA", "KITS CDA", "CODIGO KIT CDA",
             "BIOMBOS", "BIOMBO MAP", "URNAS BLANCAS", "URNAS CAFÉS", "BLOQUE",
+            "ALERTA_REUBICACION",
         ]
         df_show = df_f[cols_show].rename(
             columns={
